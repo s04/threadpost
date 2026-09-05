@@ -1,0 +1,16 @@
+{
+  "name": "threadpost",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Website conversations in your messaging inbox.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "check": "bun run typecheck && bun test"
+  },
+  "devDependencies": { "@types/bun": "1.3.10", "typescript": "5.9.3" }
+}

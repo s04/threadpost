@@ -1,0 +1,27 @@
+services:
+  threadpost:
+    build:
+      context: .
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:${THREADPOST_PORT:-8788}:8788"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8788
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8788}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?Set ADMIN_TOKEN to a unique value of at least 32 characters}
+      DB_PATH: /app/data/threadpost.sqlite
+      SITE_ID: ${SITE_ID:-demo}
+      SITE_NAME: ${SITE_NAME:-Demo site}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8788}
+      CONNECTOR: ${CONNECTOR:-demo}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TELEGRAM_OPERATOR_IDS: ${TELEGRAM_OPERATOR_IDS:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+    volumes:
+      - threadpost-data:/app/data
+
+volumes:
+  threadpost-data:

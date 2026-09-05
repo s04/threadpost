@@ -1,0 +1,16 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+node_modules
+data
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+npm-debug.log*
+bun-error.log
+README.md
+CONTRIBUTING.md
+SECURITY.md
+LICENSE

@@ -1,0 +1,230 @@
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+const state = { overview: null, conversations: [], selectedId: null, conversation: null, loading: false, threadRequest: 0, replyId: null, replyBody: null };
+const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+const shortTime = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+
+async function api(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (options.body) headers.set("Content-Type", "application/json");
+  const response = await fetch(path, { ...options, headers, credentials: "same-origin" });
+  let data = null;
+  try { data = await response.json(); } catch { /* An empty response is valid for logout/delete. */ }
+  if (!response.ok) {
+    const error = new Error(data?.error || (response.status === 429 ? "Too many requests. Please wait and try again." : "Something went wrong."));
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+function setAuthenticated(authenticated) {
+  $("login-view").hidden = authenticated;
+  $("admin-view").hidden = !authenticated;
+  if (!authenticated) {
+    state.overview = null; state.conversations = []; state.selectedId = null; state.conversation = null;
+    $("token").value = "";
+    setTimeout(() => $("token").focus(), 0);
+  }
+}
+
+function handleError(error, target) {
+  if (error.status === 401) {
+    setAuthenticated(false);
+    show($("login-error"), "Your session has ended. Sign in again.");
+    return;
+  }
+  show(target, error.message);
+}
+
+function show(element, message) { element.textContent = message; element.hidden = !message; }
+function clear(element) { while (element.firstChild) element.removeChild(element.firstChild); }
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+function displayName(conversation) { return conversation.name?.trim() || "Anonymous visitor"; }
+function formatDate(value) { const date = new Date(value); return Number.isNaN(date.valueOf()) ? "" : dateTime.format(date); }
+
+async function loadApp() {
+  try {
+    const [overview, result] = await Promise.all([api("/api/admin/overview"), api("/api/admin/conversations")]);
+    state.overview = overview; state.conversations = result.conversations || [];
+    setAuthenticated(true); renderOverview(); renderList();
+  } catch (error) {
+    if (error.status === 401) setAuthenticated(false);
+    else { setAuthenticated(false); show($("login-error"), error.message); }
+  }
+}
+
+function renderOverview() {
+  const { site, connector, counts, embedScript } = state.overview;
+  $("site-name").textContent = site.name;
+  $("embed-code").value = embedScript;
+  const countItems = [["Open", counts.open], ["Closed", counts.closed], ["Pending", counts.pending], ["Needs attention", counts.failed]];
+  clear($("counts"));
+  countItems.forEach(([label, count]) => {
+    const item = el("div", "count"); item.append(el("strong", "", String(count)), el("span", "", label)); $("counts").append(item);
+  });
+  clear($("site-details"));
+  const rows = [
+    ["Site", `${site.name} (${site.id})`],
+    ["Allowed origins", site.origins.length ? site.origins.join(", ") : "None configured"],
+    ["Connector", connector.kind === "demo" ? "Demo · local simulation" : `Telegram · ${connector.configured ? "configured" : "not configured"}`]
+  ];
+  rows.forEach(([term, value]) => { $("site-details").append(el("dt", "", term), el("dd", "", value)); });
+}
+
+function renderList() {
+  const list = $("conversation-list"); clear(list);
+  show($("list-status"), state.conversations.length ? "" : "No conversations yet.");
+  state.conversations.forEach((conversation) => {
+    const button = el("button", "conversation-item"); button.type = "button";
+    button.dataset.id = conversation.id; button.setAttribute("aria-current", conversation.id === state.selectedId ? "true" : "false");
+    const top = el("span", "conversation-top"); top.append(el("strong", "", displayName(conversation)), el("time", "", formatDate(conversation.updatedAt)));
+    const preview = el("span", "conversation-preview", conversation.lastMessage || "No messages yet");
+    const bottom = el("span", "conversation-bottom");
+    bottom.append(el("span", `status-pill ${conversation.status}`, conversation.status), el("span", "", `${conversation.messageCount} message${conversation.messageCount === 1 ? "" : "s"}`));
+    button.append(top, preview, bottom); button.addEventListener("click", () => selectConversation(conversation.id)); list.append(button);
+  });
+}
+
+async function refresh(quiet = false) {
+  if (state.loading) return;
+  state.loading = true; $("refresh-button").disabled = true;
+  if (!quiet) show($("list-status"), "Refreshing…");
+  try {
+    const [overview, result] = await Promise.all([api("/api/admin/overview"), api("/api/admin/conversations")]);
+    state.overview = overview; state.conversations = result.conversations || []; renderOverview(); renderList();
+    if (state.selectedId) await selectConversation(state.selectedId, false, true);
+  } catch (error) { handleError(error, $("list-status")); }
+  finally { state.loading = false; $("refresh-button").disabled = false; }
+}
+
+async function selectConversation(id, moveFocus = true, quiet = false) {
+  const requestId = ++state.threadRequest;
+  state.selectedId = id; renderList();
+  $("empty-thread").hidden = true; $("active-thread").hidden = false; document.body.classList.add("thread-open");
+  if (!quiet) {
+    $("reply").disabled = true; $("reply-form").querySelector("button[type=submit]").disabled = true;
+    show($("thread-error"), ""); clear($("message-list")); $("message-list").append(el("p", "loading", "Loading conversation…"));
+  }
+  try {
+    const result = await api(`/api/admin/conversations/${encodeURIComponent(id)}`);
+    if (requestId !== state.threadRequest || id !== state.selectedId) return;
+    state.conversation = result;
+    renderThread(quiet);
+    if (moveFocus) $("thread-name").focus?.();
+  } catch (error) {
+    if (requestId !== state.threadRequest) return;
+    if (!quiet) clear($("message-list"));
+    handleError(error, $("thread-error"));
+  }
+}
+
+function renderThread(preserveScroll = false) {
+  const { conversation, messages } = state.conversation;
+  $("thread-name").textContent = displayName(conversation);
+  $("thread-name").tabIndex = -1;
+  $("thread-meta").textContent = `Started ${formatDate(conversation.createdAt)} · ${conversation.status}`;
+  $("status-button").textContent = conversation.status === "open" ? "Close" : "Reopen";
+  $("reply-form").hidden = conversation.status !== "open";
+  $("closed-note").hidden = conversation.status === "open";
+  $("reply").disabled = false; $("reply-form").querySelector("button[type=submit]").disabled = false;
+  const list = $("message-list");
+  const oldScrollTop = list.scrollTop;
+  const wasNearBottom = list.scrollHeight - list.clientHeight - list.scrollTop < 80;
+  clear(list);
+  if (!messages.length) list.append(el("p", "loading", "No messages in this conversation."));
+  messages.forEach((message) => {
+    const article = el("article", `message ${message.direction}`);
+    const bubble = el("div", "message-bubble"); bubble.append(el("p", "", message.body));
+    const meta = el("div", "message-meta"); meta.append(el("time", "", shortTime.format(new Date(message.createdAt))));
+    if (message.direction === "inbound") meta.append(el("span", `delivery ${message.deliveryStatus}`, message.deliveryStatus));
+    bubble.append(meta); article.append(bubble);
+    if (message.direction === "inbound" && (message.deliveryStatus === "failed" || message.deliveryStatus === "unknown")) {
+      const retry = el("button", "retry-button", "Retry delivery"); retry.type = "button";
+      retry.addEventListener("click", () => confirmRetry(message)); article.append(retry);
+    }
+    list.append(article);
+  });
+  requestAnimationFrame(() => { list.scrollTop = preserveScroll && !wasNearBottom ? oldScrollTop : list.scrollHeight; });
+}
+
+async function submitReply(event) {
+  event.preventDefault(); const input = $("reply"); const body = input.value.trim(); if (!body || !state.selectedId) return;
+  const button = event.currentTarget.querySelector("button[type=submit]"); button.disabled = true; show($("reply-status"), "Sending…");
+  try {
+    if (!state.replyId || state.replyBody !== body) state.replyId = crypto.randomUUID();
+    state.replyBody = body;
+    await api(`/api/admin/conversations/${encodeURIComponent(state.selectedId)}/messages`, { method: "POST", body: JSON.stringify({ body, clientMessageId: state.replyId }) });
+    state.replyId = null; state.replyBody = null; input.value = ""; show($("reply-status"), "Sent"); await selectConversation(state.selectedId, false);
+    const result = await api("/api/admin/conversations"); state.conversations = result.conversations || []; renderList();
+  } catch (error) { handleError(error, $("reply-status")); }
+  finally { button.disabled = false; }
+}
+
+async function toggleStatus() {
+  const next = state.conversation.conversation.status === "open" ? "closed" : "open";
+  $("status-button").disabled = true;
+  try {
+    await api(`/api/admin/conversations/${encodeURIComponent(state.selectedId)}`, { method: "PATCH", body: JSON.stringify({ status: next }) });
+    await refresh();
+    if (next === "open") $("reply").focus();
+  } catch (error) { handleError(error, $("thread-error")); }
+  finally { $("status-button").disabled = false; }
+}
+
+function confirmDialog(title, message, label, action) {
+  $("confirm-title").textContent = title; $("confirm-message").textContent = message; $("confirm-action").textContent = label;
+  $("confirm-dialog").showModal();
+  $("confirm-dialog").addEventListener("close", async function runOnce() {
+    $("confirm-dialog").removeEventListener("close", runOnce);
+    if ($("confirm-dialog").returnValue === "confirm") await action();
+  });
+}
+
+function confirmRetry(message) {
+  const warning = message.deliveryStatus === "unknown"
+    ? "The previous delivery outcome is unknown. Retrying may send this reply twice. Continue?"
+    : "This delivery failed. Retry sending the same reply?";
+  confirmDialog("Retry delivery?", warning, "Retry", async () => {
+    try { await api(`/api/admin/messages/${encodeURIComponent(message.id)}/retry`, { method: "POST" }); await selectConversation(state.selectedId, false); }
+    catch (error) { handleError(error, $("thread-error")); }
+  });
+}
+
+function confirmDelete() {
+  confirmDialog("Delete conversation?", "This permanently deletes the local conversation and messages. Copies already sent to Telegram are not deleted.", "Delete", async () => {
+    try {
+      await api(`/api/admin/conversations/${encodeURIComponent(state.selectedId)}`, { method: "DELETE" });
+      state.selectedId = null; state.conversation = null; document.body.classList.remove("thread-open");
+      $("active-thread").hidden = true; $("empty-thread").hidden = false; await refresh();
+    } catch (error) { handleError(error, $("thread-error")); }
+  });
+}
+
+$("login-form").addEventListener("submit", async (event) => {
+  event.preventDefault(); const button = event.currentTarget.querySelector("button"); button.disabled = true; show($("login-error"), "");
+  try { await api("/api/admin/login", { method: "POST", body: JSON.stringify({ token: $("token").value }) }); await loadApp(); }
+  catch (error) { handleError(error, $("login-error")); }
+  finally { button.disabled = false; }
+});
+$("logout-button").addEventListener("click", async () => { try { await api("/api/admin/logout", { method: "POST" }); } finally { setAuthenticated(false); } });
+$("refresh-button").addEventListener("click", () => refresh());
+$("reply-form").addEventListener("submit", submitReply);
+$("status-button").addEventListener("click", toggleStatus);
+$("delete-button").addEventListener("click", confirmDelete);
+$("back-button").addEventListener("click", () => { document.body.classList.remove("thread-open"); $("conversation-list").querySelector(`[data-id="${CSS.escape(state.selectedId)}"]`)?.focus(); });
+$("settings-button").addEventListener("click", () => $("settings-dialog").showModal());
+$("copy-button").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("embed-code").value); show($("copy-status"), "Copied"); }
+  catch { $("embed-code").select(); show($("copy-status"), "Select the snippet and copy it manually."); }
+});
+loadApp();
+setInterval(() => {
+  if (!document.hidden && !$("admin-view").hidden) refresh(true);
+}, 5000);

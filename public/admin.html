@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>Admin · Threadpost</title>
+    <link rel="stylesheet" href="/admin.css">
+  </head>
+  <body>
+    <main id="login-view" class="login-view">
+      <section class="login-card" aria-labelledby="login-title">
+        <a class="wordmark" href="/">Threadpost<span>.</span></a>
+        <p class="eyebrow">Operator access</p>
+        <h1 id="login-title">Your conversations, in one quiet place.</h1>
+        <p class="muted">Enter your admin token to open the inbox.</p>
+        <form id="login-form">
+          <label for="token">Admin token</label>
+          <div class="token-row">
+            <input id="token" name="token" type="password" autocomplete="current-password" required autofocus>
+            <button class="button primary" type="submit">Sign in</button>
+          </div>
+          <p id="login-error" class="form-error" role="alert" hidden></p>
+        </form>
+      </section>
+    </main>
+
+    <div id="admin-view" class="admin-view" hidden>
+      <header class="topbar">
+        <a class="wordmark" href="/">Threadpost<span>.</span></a>
+        <div class="topbar-actions">
+          <span id="site-name" class="site-name"></span>
+          <button id="settings-button" class="icon-button" type="button" aria-label="Open settings" aria-controls="settings-dialog">Settings</button>
+          <button id="logout-button" class="button subtle" type="button">Log out</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside id="inbox-panel" class="inbox-panel" aria-label="Conversations">
+          <div class="panel-heading">
+            <div><p class="eyebrow">Inbox</p><h1>Conversations</h1></div>
+            <button id="refresh-button" class="icon-button" type="button" aria-label="Refresh conversations">Refresh</button>
+          </div>
+          <div id="counts" class="counts" aria-label="Conversation totals"></div>
+          <p id="list-status" class="panel-status" role="status"></p>
+          <div id="conversation-list" class="conversation-list"></div>
+        </aside>
+
+        <section id="thread-panel" class="thread-panel" aria-label="Conversation thread">
+          <div id="empty-thread" class="empty-thread">
+            <span class="empty-mark" aria-hidden="true">↗</span>
+            <h2>Select a conversation</h2>
+            <p>Choose a message from the inbox to read and reply.</p>
+          </div>
+          <div id="active-thread" class="active-thread" hidden>
+            <header class="thread-heading">
+              <button id="back-button" class="back-button" type="button">← Inbox</button>
+              <div class="thread-identity"><h2 id="thread-name"></h2><p id="thread-meta"></p></div>
+              <div class="thread-actions">
+                <button id="status-button" class="button subtle" type="button"></button>
+                <button id="delete-button" class="button danger-text" type="button">Delete</button>
+              </div>
+            </header>
+            <p id="thread-error" class="notice error" role="alert" hidden></p>
+            <div id="message-list" class="message-list" aria-live="polite"></div>
+            <form id="reply-form" class="reply-form">
+              <label for="reply">Reply to visitor</label>
+              <textarea id="reply" name="body" rows="3" maxlength="2000" required placeholder="Write a reply…"></textarea>
+              <div class="reply-footer"><span id="reply-status" role="status"></span><button class="button primary" type="submit">Send reply</button></div>
+            </form>
+            <div id="closed-note" class="closed-note" hidden>This conversation is closed. Reopen it to reply.</div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="settings-dialog" class="dialog">
+      <form method="dialog" class="dialog-card">
+        <div class="dialog-heading"><div><p class="eyebrow">Installation</p><h2>Settings</h2></div><button class="dialog-close" value="cancel" aria-label="Close settings">×</button></div>
+        <dl id="site-details" class="details"></dl>
+        <label for="embed-code">Embed snippet</label>
+        <textarea id="embed-code" rows="4" readonly></textarea>
+        <div class="dialog-footer"><span id="copy-status" role="status"></span><button id="copy-button" class="button primary" type="button">Copy snippet</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="confirm-dialog" class="dialog confirm-dialog">
+      <form method="dialog" class="dialog-card">
+        <h2 id="confirm-title"></h2><p id="confirm-message"></p>
+        <div class="dialog-footer"><button class="button subtle" value="cancel">Cancel</button><button id="confirm-action" class="button danger" value="confirm">Confirm</button></div>
+      </form>
+    </dialog>
+    <script src="/admin.js" defer></script>
+  </body>
+</html>

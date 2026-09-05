@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Threadpost is a small, self-hosted chat bridge for websites.">
+  <title>Threadpost — website conversations, delivered simply</title>
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="Threadpost home"><span aria-hidden="true">T/</span> Threadpost</a>
+    <nav aria-label="Main navigation">
+      <a href="#how-it-works">How it works</a>
+      <a class="admin-link" href="/admin">Admin sign in <span aria-hidden="true">→</span></a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="eyebrow">A self-hosted website chat bridge</div>
+      <h1 id="hero-title">Turn a website visit into a real conversation.</h1>
+      <p class="lede">Threadpost adds a focused chat window to your site and keeps replies in one practical inbox. Try the live widget in the corner.</p>
+      <div class="hero-actions">
+        <button class="demo-button" type="button" id="open-demo">Open the demo</button>
+        <a href="#embed">See the embed code</a>
+      </div>
+      <div class="rule-note"><span>01</span> One script. Your server. Your conversations.</div>
+    </section>
+
+    <section class="steps" id="how-it-works" aria-labelledby="steps-title">
+      <div>
+        <p class="kicker">How it works</p>
+        <h2 id="steps-title">A short path from page to reply.</h2>
+      </div>
+      <ol>
+        <li><span>01</span><strong>Add the widget</strong><p>Place one script tag on the pages where visitors should reach you.</p></li>
+        <li><span>02</span><strong>Receive a message</strong><p>Each visitor gets a private conversation authenticated in their browser.</p></li>
+        <li><span>03</span><strong>Reply from the inbox</strong><p>Use Threadpost’s admin view to read the thread and write back.</p></li>
+      </ol>
+    </section>
+
+    <section class="embed" id="embed" aria-labelledby="embed-title">
+      <div>
+        <p class="kicker">Installation</p>
+        <h2 id="embed-title">Small enough to understand.</h2>
+        <p>The widget is plain JavaScript with an isolated Shadow DOM interface. Point it at the Threadpost server that serves it and identify your site.</p>
+      </div>
+      <pre><code>&lt;script src="https://your-threadpost.example/widget.js"
+  data-site="your-site"
+  data-title="Chat with us" defer&gt;&lt;/script&gt;</code></pre>
+    </section>
+  </main>
+
+  <footer>
+    <span>Threadpost</span>
+    <span>Website conversation utility</span>
+  </footer>
+
+  <script src="/widget.js" data-site="demo" data-title="Chat with us" defer></script>
+  <script>
+    document.getElementById('open-demo').addEventListener('click', function () {
+      var widget = document.getElementById('threadpost-widget');
+      var button = widget && widget.shadowRoot && widget.shadowRoot.querySelector('.launcher');
+      if (button) button.click();
+    });
+  </script>
+</body>
+</html>
