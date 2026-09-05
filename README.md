@@ -39,7 +39,7 @@ connector so old conversation threads cannot be routed to a different inbox.
 Add this script to a page whose exact origin is listed in `ALLOWED_ORIGINS`:
 
 ```html
-<script src="https://support.example.com/widget.js" data-site="demo" data-title="Chat with us"></script>
+<script src="https://support.example.com/widget.js" data-site="demo" data-title="Chat with us" defer></script>
 ```
 
 `data-title` is optional. The widget derives the API address from the script URL. Conversation credentials stay in browser storage scoped to the server and site, and are sent only in authorization headers.

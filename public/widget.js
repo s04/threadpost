@@ -5,6 +5,11 @@
   if (!script || script.dataset.threadpostMounted === "true") return;
   script.dataset.threadpostMounted = "true";
 
+  if (!document.body) document.addEventListener("DOMContentLoaded", mount, { once: true });
+  else mount();
+
+  function mount() {
+
   const siteId = (script.dataset.site || "").trim();
   if (!siteId) {
     console.error("Threadpost: widget script requires a data-site attribute.");
@@ -366,5 +371,6 @@
 
   function makeId() {
     return globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
   }
 })();
