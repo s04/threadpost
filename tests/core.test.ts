@@ -163,7 +163,7 @@ describe("Telegram webhook updates", () => {
     expect(messages[0]).toMatchObject({
       direction: "outbound",
       body: "Operator reply",
-      clientMessageId: "telegram-9001",
+      clientMessageId: "provider-unused-9001",
       deliveryStatus: "sent",
     });
   });

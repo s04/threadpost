@@ -7,6 +7,13 @@ export interface Connector {
   send(threadId: string, body: string): Promise<void>;
 }
 
+/** Normalized, already-authenticated provider input. The bridge deduplicates eventId. */
+export interface OperatorReply {
+  eventId: string;
+  threadId: string;
+  body: string;
+}
+
 /** Unknown means the provider may have accepted the request before transport failed. */
 export class DeliveryError extends Error {
   constructor(public uncertain: boolean) { super(uncertain ? "Delivery outcome unknown" : "Provider rejected delivery"); }

@@ -5,12 +5,18 @@
   "type": "module",
   "description": "Website conversations in your messaging inbox.",
   "license": "MIT",
+  "exports": {
+    ".": { "types": "./src/library.ts", "default": "./src/library.ts" },
+    "./connectors": { "types": "./src/connectors.ts", "default": "./src/connectors.ts" }
+  },
+  "files": ["src", "public", "scripts", "tsconfig.json", "README.md", "LICENSE"],
   "scripts": {
-    "dev": "bun --watch src/index.ts",
-    "start": "bun src/index.ts",
+    "build": "bun run scripts/build.ts",
+    "dev": "bun run build && bun --watch src/index.ts",
+    "start": "bun run build && bun src/index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "check": "bun run typecheck && bun test"
+    "check": "bun run typecheck && bun test && bun run build"
   },
   "devDependencies": { "@types/bun": "1.3.10", "typescript": "5.9.3" }
 }

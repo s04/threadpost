@@ -7,6 +7,8 @@ RUN bun install --frozen-lockfile --production
 
 COPY --chown=bun:bun src ./src
 COPY --chown=bun:bun public ./public
+COPY --chown=bun:bun scripts ./scripts
+RUN bun run build
 
 RUN mkdir -p /app/data && chown bun:bun /app/data
 
@@ -18,4 +20,4 @@ USER bun
 EXPOSE 8788
 VOLUME ["/app/data"]
 
-CMD ["bun", "run", "start"]
+CMD ["bun", "src/index.ts"]

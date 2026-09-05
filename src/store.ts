@@ -40,6 +40,12 @@ export class Store {
       CREATE INDEX IF NOT EXISTS messages_outbox ON messages(delivery_status,id);
       CREATE UNIQUE INDEX IF NOT EXISTS conversation_tokens ON conversations(token_hash);
       CREATE TABLE IF NOT EXISTS telegram_updates (id INTEGER PRIMARY KEY, created_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS connector_events (
+        connector TEXT NOT NULL, event_id TEXT NOT NULL, created_at TEXT NOT NULL,
+        PRIMARY KEY(connector,event_id)
+      );
+      INSERT OR IGNORE INTO connector_events (connector,event_id,created_at)
+        SELECT 'telegram',cast(id AS TEXT),created_at FROM telegram_updates;
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     `);
     // A crash after submitting a request cannot prove that it was not delivered.

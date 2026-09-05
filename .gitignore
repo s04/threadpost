@@ -8,3 +8,5 @@ coverage/
 playwright-report/
 test-results/
 .DS_Store
+public/admin.js
+public/widget.js

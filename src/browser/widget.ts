@@ -1,8 +1,32 @@
 (function () {
   "use strict";
 
-  const script = document.currentScript;
-  if (!script || script.dataset.threadpostMounted === "true") return;
+  interface Session { id: string; token: string }
+  interface Conversation { id: string; status: "open" | "closed"; name?: string; createdAt?: string }
+  interface Message {
+    id: number;
+    direction: "inbound" | "outbound";
+    body: string;
+    createdAt: string;
+    deliveryStatus: "pending" | "sending" | "sent" | "failed" | "unknown";
+  }
+  interface ConversationCreated { id: string; token: string; status?: "open" | "closed" }
+  interface ThreadResponse { conversation: Conversation; messages: Message[] }
+  interface PendingMessage {
+    body: string;
+    clientMessageId: string;
+    clientToken: string;
+    phase: "create" | "send";
+    failed: boolean;
+    sending?: boolean;
+  }
+  class ApiError extends Error {
+    constructor(public readonly status: number, message: string) { super(message); }
+  }
+
+  const currentScript = document.currentScript;
+  if (!(currentScript instanceof HTMLScriptElement) || currentScript.dataset.threadpostMounted === "true") return;
+  const script: HTMLScriptElement = currentScript;
   script.dataset.threadpostMounted = "true";
 
   if (!document.body) document.addEventListener("DOMContentLoaded", mount, { once: true });
@@ -129,10 +153,10 @@
   root.appendChild(wrap);
 
   let session = readSession();
-  let status = "open";
+  let status: "open" | "closed" = "open";
   let pollTimer = 0;
   let polling = false;
-  let pending = null;
+  let pending: PendingMessage | null = null;
 
   nameInput.hidden = Boolean(session);
   launcher.addEventListener("click", openPanel);
@@ -145,34 +169,40 @@
     textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
     clearError();
   });
-  textarea.addEventListener("keydown", (event) => {
+  textarea.addEventListener("keydown", (event: KeyboardEvent) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       composer.requestSubmit();
     }
   });
-  panel.addEventListener("keydown", (event) => {
+  panel.addEventListener("keydown", (event: KeyboardEvent) => {
     if (event.key === "Escape") closePanel();
   });
   document.addEventListener("visibilitychange", updatePolling);
 
-  function el(tag, className, text) {
+  function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text?: string): HTMLElementTagNameMap[K] {
     const node = document.createElement(tag);
     if (className) node.className = className;
     if (text !== undefined) node.textContent = text;
     return node;
   }
 
-  function readSession() {
+  function readSession(): Session | null {
     try {
-      const value = JSON.parse(localStorage.getItem(storageKey));
-      return value && typeof value.id === "string" && typeof value.token === "string" ? value : null;
+      const stored = localStorage.getItem(storageKey);
+      if (!stored) return null;
+      const value: unknown = JSON.parse(stored);
+      if (!value || typeof value !== "object") return null;
+      const candidate = value as Record<string, unknown>;
+      return typeof candidate.id === "string" && typeof candidate.token === "string"
+        ? { id: candidate.id, token: candidate.token }
+        : null;
     } catch (_) {
       return null;
     }
   }
 
-  function saveSession(value) {
+  function saveSession(value: Session): void {
     session = value;
     try { localStorage.setItem(storageKey, JSON.stringify(value)); } catch (_) {}
   }
@@ -210,19 +240,20 @@
     }
   }
 
-  async function api(path, options) {
+  async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
     const response = await fetch(`${apiBase}${path}`, options);
     let data = null;
     try { data = await response.json(); } catch (_) {}
     if (!response.ok) {
-      const problem = new Error(data && data.error ? data.error : `Request failed (${response.status})`);
-      problem.status = response.status;
-      throw problem;
+      const message = data && typeof data === "object" && "error" in data && typeof data.error === "string"
+        ? data.error
+        : `Request failed (${response.status})`;
+      throw new ApiError(response.status, message);
     }
-    return data;
+    return data as T;
   }
 
-  async function onSubmit(event) {
+  async function onSubmit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     const body = textarea.value.trim();
     if (!body || body.length > 2000 || pending || status === "closed") return;
@@ -243,7 +274,7 @@
     renderPending();
     try {
       if (!session) {
-        const created = await api("/api/conversations", {
+        const created = await api<ConversationCreated>("/api/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ siteId, name: nameInput.value.trim() || undefined, clientToken: pending.clientToken })
@@ -253,16 +284,18 @@
         nameInput.hidden = true;
         pending.phase = "send";
       }
-      const sent = await api(`/api/conversations/${encodeURIComponent(session.id)}/messages`, {
+      const activeSession = session;
+      if (!activeSession) throw new Error("Conversation session was not created.");
+      const sent = await api<Message>(`/api/conversations/${encodeURIComponent(activeSession.id)}/messages`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${activeSession.token}` },
         body: JSON.stringify({ body: pending.body, clientMessageId: pending.clientMessageId })
       });
       pending = null;
       renderMessages([sent]);
       await loadMessages();
     } catch (problem) {
-      if (problem.status === 401 || problem.status === 404) {
+      if (problem instanceof ApiError && (problem.status === 401 || problem.status === 404)) {
         clearSession();
         nameInput.hidden = false;
         if (pending) pending.phase = "create";
@@ -271,7 +304,7 @@
         pending.failed = true;
         pending.sending = false;
       }
-      showError(problem.message || "Could not send. Please try again.");
+      showError(problem instanceof Error ? problem.message : "Could not send. Please try again.");
       renderPending();
     } finally {
       send.disabled = Boolean(pending);
@@ -284,7 +317,7 @@
     const requestedSession = session;
     polling = true;
     try {
-      const data = await api(`/api/conversations/${encodeURIComponent(requestedSession.id)}/messages`, {
+      const data = await api<ThreadResponse>(`/api/conversations/${encodeURIComponent(requestedSession.id)}/messages`, {
         headers: { Authorization: `Bearer ${requestedSession.token}` }
       });
       if (session !== requestedSession) return;
@@ -294,7 +327,7 @@
       clearError();
     } catch (problem) {
       if (session !== requestedSession) return;
-      if (problem.status === 401 || problem.status === 404) {
+      if (problem instanceof ApiError && (problem.status === 401 || problem.status === 404)) {
         clearSession();
         nameInput.hidden = false;
         showError("This chat session expired. Send a message to start again.");
@@ -304,7 +337,7 @@
     }
   }
 
-  function renderMessages(list) {
+  function renderMessages(list: Message[]): void {
     messages.replaceChildren();
     if (!list.length && !pending) messages.appendChild(empty);
     list.forEach((message) => messages.appendChild(messageNode(message)));
@@ -312,7 +345,7 @@
     messages.scrollTop = messages.scrollHeight;
   }
 
-  function messageNode(message) {
+  function messageNode(message: Message): HTMLElement {
     const item = el("article", `message ${message.direction === "outbound" ? "outbound" : "inbound"}`);
     item.appendChild(el("p", "bubble", String(message.body || "")));
     const state = message.deliveryStatus && message.deliveryStatus !== "sent" ? ` · ${message.deliveryStatus}` : "";
@@ -320,7 +353,8 @@
     return item;
   }
 
-  function pendingNode() {
+  function pendingNode(): HTMLElement {
+    if (!pending) throw new Error("No pending message to render.");
     const item = el("article", "message inbound");
     item.dataset.pending = "true";
     item.appendChild(el("p", "bubble", pending.body));
@@ -341,7 +375,7 @@
     messages.scrollTop = messages.scrollHeight;
   }
 
-  function setClosed(isClosed) {
+  function setClosed(isClosed: boolean): void {
     composer.hidden = isClosed;
     closed.hidden = !isClosed;
     if (isClosed) window.clearTimeout(pollTimer);
@@ -359,7 +393,7 @@
     nameInput.focus();
   }
 
-  function showError(message) {
+  function showError(message: string): void {
     error.textContent = message;
     error.hidden = false;
   }

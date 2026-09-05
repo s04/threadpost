@@ -6,4 +6,4 @@ export { createApp } from "./app";
 export { readConfig } from "./config";
 export type { Config } from "./config";
 export { DemoConnector, TelegramConnector, DeliveryError } from "./connectors";
-export type { Connector } from "./connectors";
+export type { Connector, OperatorReply } from "./connectors";

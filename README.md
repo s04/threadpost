@@ -100,11 +100,49 @@ The connector boundary is intended to support more transports later. Matrix and 
 
 ## Reuse the bridge
 
+All authored application code, including the admin panel and embedded widget,
+is TypeScript. `bun run build` bundles browser sources from `src/browser/` into
+ignored JavaScript files in `public/`. Start builds them automatically; rebuild
+after browser-source edits during development. HTML and CSS remain plain files.
+
 `src/library.ts` exports the store, bridge, HTTP handler and connector contract
 for other Bun applications. A connector implements `createThread(conversationId)`
 and `send(threadId, body)`. Keep provider credentials server-side; a new transport
 also needs an authenticated inbound handler that resolves its thread to exactly
 one conversation. The Telegram adapter is the reference implementation.
+
+Package entry points are `threadpost` (Bun server library) and
+`threadpost/connectors` (transport contract and adapters). This private starter
+has not been published to npm; use a local path dependency to develop against
+it. The bundled SQLite store requires Bun. The connector contract itself does
+not depend on Bun.
+
+```ts
+import { Bridge, Store } from "threadpost";
+import type { Connector } from "threadpost/connectors";
+
+function connect(adapter: Connector) {
+  const store = new Store("data/custom-inbox.sqlite");
+  store.bindWorkspace(`my-app:${adapter.kind}`);
+  const bridge = new Bridge(store, adapter);
+  // Schedule bridge.flush() in the host service to drain the durable outbox.
+  return bridge;
+}
+```
+
+An inbound adapter calls `bridge.receive({ eventId, threadId, body })` **after**
+validating its provider signature, destination workspace and operator identity.
+The bridge deduplicates provider events and routes the reply to the stored
+conversation. An unknown external-send outcome must throw `DeliveryError(true)`;
+an explicit rejection can throw `DeliveryError(false)`. Never put provider
+tokens in the browser. WhatsApp requires its own adapter and platform-policy
+handling; it is not enabled by changing the connector name.
+
+The current panel displays environment-based setup; it does not edit provider
+credentials or create isolated apps. One deployment is one workspace. Multiple
+allowed origins share that workspace and are not tenant isolation. A future
+multi-app edition needs app-scoped conversations, credentials, routing and
+operator permissions before a shared deployment can safely host separate apps.
 
 This starter supports text only and lists the latest 200 conversations in the
 panel. Visitor credentials expire after 30 days; stored conversations are not

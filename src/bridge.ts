@@ -1,5 +1,5 @@
 import { Store, AppError } from "./store";
-import { DeliveryError, type Connector } from "./connectors";
+import { DeliveryError, type Connector, type OperatorReply } from "./connectors";
 import type { Config } from "./config";
 
 export class Bridge {
@@ -56,13 +56,21 @@ export class Bridge {
         || message.text.startsWith("/")) return;
     const body = message.text.trim();
     if (!body || body.startsWith("/") || body.length > 2000) return;
-    this.store.db.transaction(() => {
-      if (this.store.db.query("SELECT id FROM telegram_updates WHERE id=?").get(update.update_id)) return;
-      const row = this.store.db.query("SELECT id FROM conversations WHERE thread_id=?").get(String(message.message_thread_id)) as { id: string } | null;
-      if (!row) return;
+    this.receive({ eventId: String(update.update_id), threadId: String(message.message_thread_id), body });
+  }
+  /** Call only after checking the provider signature, workspace and operator identity. */
+  receive(reply: OperatorReply) {
+    if (!reply.eventId || reply.eventId.length > 200 || !reply.threadId || reply.threadId.length > 200
+      || !reply.body.trim() || reply.body.length > 2000) throw new AppError(400, "Invalid operator reply.");
+    return this.store.db.transaction(() => {
+      if (this.store.db.query("SELECT event_id FROM connector_events WHERE connector=? AND event_id=?").get(this.connector.kind, reply.eventId)) return false;
+      const row = this.store.db.query("SELECT id FROM conversations WHERE thread_id=?").get(reply.threadId) as { id: string } | null;
+      if (!row) return false;
       this.store.setStatus(row.id, "open");
-      this.store.add(row.id, "outbound", body, `telegram-${update.update_id}`);
-      this.store.db.query("INSERT INTO telegram_updates (id,created_at) VALUES (?,?)").run(update.update_id, new Date().toISOString());
+      this.store.add(row.id, "outbound", reply.body.trim(), `provider-${this.connector.kind}-${reply.eventId}`);
+      this.store.db.query("INSERT INTO connector_events (connector,event_id,created_at) VALUES (?,?,?)")
+        .run(this.connector.kind, reply.eventId, new Date().toISOString());
+      return true;
     })();
   }
 }
