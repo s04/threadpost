@@ -75,27 +75,38 @@ The most private method uses your new bot and Telegram’s Bot API directly:
 
 1. Before connecting Threadpost, ask each operator to open the exact bot username created in step 1.
 2. Each operator taps **Start** or sends `/start` to the bot in a private chat.
-3. From the Threadpost checkout, run the command below. It prompts for the token without displaying it or putting it in shell history, downloads the bot’s pending updates, and prints only sender IDs and account labels.
+3. From the Threadpost checkout, run the Bash command below. On macOS, where the default shell is usually Zsh, run `bash` first. The command prompts for the token without displaying it or putting it in shell history, downloads the bot’s pending updates, and prints only sender IDs and account labels.
 
 ```sh
+(
 read -rsp "Bot token: " THREADPOST_BOT_TOKEN; echo
 export THREADPOST_BOT_TOKEN
+trap 'unset THREADPOST_BOT_TOKEN' EXIT
 bun -e '
-const response = await fetch(`https://api.telegram.org/bot${process.env.THREADPOST_BOT_TOKEN}/getUpdates`);
-const payload = await response.json();
-if (!payload.ok) throw new Error(payload.description || "Telegram rejected the request");
-const operators = new Map();
-for (const update of payload.result) {
-  const from = update.message?.from ?? update.edited_message?.from;
-  if (from && !from.is_bot) operators.set(String(from.id), {
-    id: String(from.id),
-    username: from.username ? `@${from.username}` : "",
-    name: [from.first_name, from.last_name].filter(Boolean).join(" ")
+try {
+  const token = process.env.THREADPOST_BOT_TOKEN;
+  if (!token) throw new Error();
+  const response = await fetch(`https://api.telegram.org/bot${token}/getUpdates`, {
+    signal: AbortSignal.timeout(15000)
   });
+  const payload = await response.json();
+  if (!payload.ok || !Array.isArray(payload.result)) throw new Error();
+  const operators = new Map();
+  for (const update of payload.result) {
+    const from = update.message?.from ?? update.edited_message?.from;
+    if (from && !from.is_bot) operators.set(String(from.id), {
+      id: String(from.id),
+      username: from.username ? `@${from.username}` : "",
+      name: [from.first_name, from.last_name].filter(Boolean).join(" ")
+    });
+  }
+  console.table([...operators.values()]);
+} catch {
+  console.error("Could not read Telegram updates. Check the token, connection, and webhook state, then try again.");
+  process.exitCode = 1;
 }
-console.table([...operators.values()]);
 '
-unset THREADPOST_BOT_TOKEN
+)
 ```
 
 If an operator is missing, have that person send the bot a new private message and run the command again. Match the returned ID to the expected account before allowing it.
@@ -128,7 +139,7 @@ If setup fails:
 
 ## 7. Test the first new website conversation
 
-Connecting Telegram preserves conversations already stored in Threadpost, but it does not replay them into Telegram. Only conversations created after the connection get Telegram topics.
+Connecting Telegram preserves conversations already stored in Threadpost, but it does not replay their message history. The next new visitor message creates a Telegram topic whether it starts a new conversation or continues one that already existed in the browser inbox. Only that new message and later visitor messages are forwarded.
 
 1. Open a page containing the Threadpost widget in a fresh private/incognito browser window. This ensures the widget creates a new conversation instead of reopening a stored one.
 2. Send a short synthetic message, such as `Testing the new inbox`.
