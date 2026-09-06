@@ -191,7 +191,7 @@ database transport to the Container; account API credentials stay outside it.
 
 ## Telegram connector
 
-Telegram setup is an explicit operator action:
+Telegram setup is an explicit operator action. Follow the [complete Telegram setup guide](docs/telegram-setup.md) for BotFather, forum permissions, device-specific chat ID steps, operator ID discovery, connection feedback, and an end-to-end test.
 
 The admin panel's **Settings → Telegram** form can perform setup without
 changing container configuration. Provide the bot token, group ID, and allowed

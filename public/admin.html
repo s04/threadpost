@@ -99,12 +99,14 @@
           <details class="setup-guide">
             <summary>Telegram setup instructions</summary>
             <ol>
-              <li>Create a bot with <strong>@BotFather</strong> and copy its token.</li>
-              <li>Create a private group and enable <strong>Topics</strong> in its settings.</li>
-              <li>Open <strong>Group info → Edit / Manage Group → Administrators → Add Administrator</strong>. Search for the exact bot username shown by BotFather, select your bot, enable <strong>Manage Topics</strong>, and save. Menu names vary between mobile, desktop, and web.</li>
-              <li>Find the group’s numeric chat ID and each operator’s numeric Telegram user ID.</li>
+              <li>Open the verified <strong>@BotFather</strong>, send <code>/newbot</code>, and copy the token it creates. Keep the token private.</li>
+              <li>Create a <strong>private</strong> Telegram group, add the people who will operate the inbox, and enable <strong>Topics</strong>.</li>
+              <li>Open <strong>Group info → Edit / Manage Group → Administrators → Add Administrator</strong>. Search for the exact bot username shown by BotFather, select it, explicitly enable <strong>Manage Topics</strong>, and save. Adding the bot as a member or administrator without Manage Topics is not enough.</li>
+              <li>Before connecting, ask each operator to privately message the new bot, then use the Bot API <code>getUpdates</code> method to find their numeric user IDs. Telegram usernames do not work here.</li>
+              <li>Find the group’s <code>-100…</code> chat ID from a copied message link using the instructions below.</li>
             </ol>
-            <p>Threadpost cannot discover these IDs for you. Only people whose numeric IDs you enter can send operator replies.</p>
+            <p>Threadpost cannot discover operator IDs for you. Only people whose numeric IDs you enter can send operator replies. Collect the IDs before connecting because Telegram does not allow <code>getUpdates</code> while a webhook is active.</p>
+            <p><a href="https://github.com/s04/threadpost/blob/main/docs/telegram-setup.md" target="_blank" rel="noopener noreferrer">Open the complete Telegram setup guide</a> for the safe ID lookup command, device-specific chat ID steps, connection feedback, and the first widget test.</p>
             <p><strong>“Telegram could not access that group” or “chat not found”?</strong> Check the chat ID, then add the same bot whose token you entered to that group using the administrator steps above. Creating a bot in BotFather or messaging it privately does not add it to your group. Save its permissions, then click <strong>Connect Telegram</strong> again.</p>
           </details>
           <form id="telegram-form" class="settings-form">
@@ -132,6 +134,7 @@
             </details>
             <div class="form-action"><span id="telegram-error" class="form-error" role="alert"></span><button id="telegram-submit" class="button primary" type="submit">Connect Telegram</button></div>
           </form>
+          <p class="section-note">After connecting, start a new conversation from the widget in a private browser window. Existing Threadpost conversations stay in the browser inbox and are not replayed into Telegram.</p>
         </section>
         <section class="settings-section" aria-labelledby="snippet-title">
           <div class="section-heading"><div><p class="eyebrow">Widget appearance</p><h3 id="snippet-title">Snippet customization</h3></div></div>
