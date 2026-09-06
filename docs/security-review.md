@@ -68,3 +68,17 @@ vulnerabilities are absent.
   security assurance.
 
 See [SECURITY.md](../SECURITY.md) for private reporting and deployment responsibilities.
+
+## Admin-access documentation follow-up
+
+The follow-up reviewed the current session/origin checks, Turnstile validation,
+Telegram settings encryption, and Worker routing. Added token-recovery guidance
+and a login-screen link, including preservation of the encryption key during
+admin-token rotation. Refreshed the homepage snippet with supported appearance
+options. This was a focused follow-up, not a new independent full audit.
+
+Validation: 57 tests passed, browser smoke passed, and `bun audit` reported no
+known vulnerabilities. Read-only live checks confirmed an unauthenticated admin
+overview returns 401 and `/.env` returns 404. Public widget configuration exposed
+a sitekey; this alone does not prove a complete challenge round trip.
+The shared admin credential has no MFA or individual operator accounts.

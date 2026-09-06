@@ -65,7 +65,7 @@ other deployment secrets unchanged.
 4. Try a follow-up message: an existing conversation should not ask for another challenge.
 
 No extra Turnstile script or key attribute is needed in your embed snippet.
-Threadpost retrieves the public sitekey from `/api/widget-config` and loads the
+Threadpost retrieves the public sitekey from `/api/widget-config?siteId=YOUR_SITE_ID` and loads the
 challenge itself. A saved conversation bypasses new-chat verification, so use
 **New chat** or a private window when checking setup.
 
@@ -73,7 +73,7 @@ challenge itself. A saved conversation bypasses new-chat verification, so use
 
 | Symptom | Check |
 | --- | --- |
-| No challenge in a new conversation | Confirm both keys reached the running deployment and `/api/widget-config` returns a non-null `turnstileSiteKey`. A public sitekey alone does not prove server verification works. |
+| No challenge in a new conversation | Confirm both keys reached the running deployment and `/api/widget-config?siteId=YOUR_SITE_ID` returns a non-null `turnstileSiteKey`. A public sitekey alone does not prove server verification works. |
 | “Configure both Turnstile keys together” | Supply the matching sitekey and secret, then restart or redeploy. |
 | “Complete the verification before starting a chat” | Wait for the challenge to finish. Check whether a browser extension or network filter blocks `challenges.cloudflare.com`. |
 | “Verification expired or failed” | Retry verification; check the key pair, allowed hostname, and exact `ALLOWED_ORIGINS`. Custom integrations must use action `start_chat`. |

@@ -69,7 +69,7 @@ start hosted CI.
 cp .env.example .env
 ```
 
-Set `ADMIN_TOKEN` in `.env` to a unique value of at least 32 characters. Then install dependencies and start the server:
+Set `ADMIN_TOKEN` in `.env` to a unique random value of at least 32 characters and save it in your password manager. See [admin access and token recovery](docs/admin-access.md) if you need to find or reset it. Then install dependencies and start the server:
 
 ```sh
 bun install --frozen-lockfile

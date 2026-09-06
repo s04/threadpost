@@ -44,11 +44,14 @@
       <div>
         <p class="kicker">Installation</p>
         <h2 id="embed-title">Small enough to understand.</h2>
-        <p>The widget is plain JavaScript with an isolated Shadow DOM interface. Point it at the Threadpost server that serves it and identify your site.</p>
+        <p>The widget is plain JavaScript with an isolated Shadow DOM interface. Replace the example server address and site ID with your deployment values. Allow your website’s exact origin on the backend. Use Settings in the admin inbox to generate your snippet and customize its appearance.</p>
       </div>
       <pre><code>&lt;script src="https://your-threadpost.example/widget.js"
   data-site="your-site"
-  data-title="Chat with us" defer&gt;&lt;/script&gt;</code></pre>
+  data-title="Chat with us"
+  data-theme="auto"
+  data-style="minimal"
+  data-font="inherit" defer&gt;&lt;/script&gt;</code></pre>
     </section>
   </main>
 
