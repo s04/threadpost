@@ -22,7 +22,7 @@
       <h1 id="hero-title">Turn a website visit into a real conversation.</h1>
       <p class="lede">Threadpost adds a focused chat window to your site and keeps replies in one practical inbox. Try the live widget in the corner.</p>
       <div class="hero-actions">
-        <button class="demo-button" type="button" id="open-demo">Open the demo</button>
+        <button class="demo-button" type="button" data-threadpost-open>Open the demo</button>
         <a href="#embed">See the embed code</a>
       </div>
       <div class="rule-note"><span>01</span> One script. Your server. Your conversations.</div>
@@ -58,12 +58,5 @@
   </footer>
 
   <script src="/widget.js" data-site="demo" data-title="Chat with us" defer></script>
-  <script>
-    document.getElementById('open-demo').addEventListener('click', function () {
-      var widget = document.getElementById('threadpost-widget');
-      var button = widget && widget.shadowRoot && widget.shadowRoot.querySelector('.launcher');
-      if (button) button.click();
-    });
-  </script>
 </body>
 </html>

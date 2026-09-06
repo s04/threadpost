@@ -218,6 +218,9 @@
   deleteButton.hidden = !session;
   syncSendDisabled();
   launcher.addEventListener("click", openPanel);
+  document.querySelectorAll<HTMLElement>("[data-threadpost-open]").forEach((trigger) => {
+    trigger.addEventListener("click", openPanel);
+  });
   close.addEventListener("click", closePanel);
   newButton.addEventListener("click", newConversation);
   notifyButton.addEventListener("click", enableNotifications);
