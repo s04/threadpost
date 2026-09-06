@@ -1,17 +1,20 @@
 # Contributing to Threadpost
 
 For changes to the widget, inbox, authentication, or content security policy,
-also run the isolated browser smoke test:
+run the complete local suite:
 
 ```sh
 bun run browser:install
-bun run check:browser
+bun run check:all
 ```
 
 It starts an in-memory local demo and never connects to Telegram. To reuse an
 existing Chromium installation, set `CHROMIUM_PATH` to its executable instead
 of installing a browser. Browser binaries are not included in normal installs;
-this check is opt-in so ordinary local checks and manual CI remain lightweight.
+`bun run check` remains available for fast checks. The manually dispatched CI
+workflow runs the complete suite; pushes never trigger it. See
+[Testing Threadpost](docs/testing.md) for the unit, integration, regression and
+end-to-end commands.
 
 Thank you for helping improve Threadpost.
 
@@ -30,7 +33,7 @@ Replace the sample `ADMIN_TOKEN` before starting the application. Keep `CONNECTO
 Before submitting a change, run:
 
 ```sh
-bun run check
+bun run check:all
 ```
 
 ## Changes
@@ -53,6 +56,6 @@ Use synthetic messages and credentials in tests, screenshots, issues, and pull r
 
 ## Pull requests
 
-Describe the user-visible behavior, relevant security or delivery-state effects, and the checks you ran. A pull request should pass `bun run check` and should update documentation when setup or configuration changes.
+Describe the user-visible behavior, relevant security or delivery-state effects, and the checks you ran. A pull request should pass `bun run check:all` and should update documentation when setup or configuration changes.
 
 Report security problems privately as described in [SECURITY.md](SECURITY.md).

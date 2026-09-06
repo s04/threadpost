@@ -6,7 +6,7 @@ import { createRuntimeHandler } from "../src/runtime";
 import { Bridge } from "../src/bridge";
 import { TelegramConnector } from "../src/connectors";
 import { D1Store, type D1Transport } from "../src/d1-store";
-import { schemaStatements } from "../src/schema";
+import { SQLiteD1Transport } from "../tests/support/sqlite-d1";
 import { secret } from "../src/store";
 import type { Config } from "../src/config";
 
@@ -22,15 +22,7 @@ async function scenario(name: string, run: (h: Awaited<ReturnType<typeof setup>>
 }
 async function setup() {
   const db = new Database(":memory:");
-  db.exec(`PRAGMA foreign_keys=ON; ${schemaStatements.join(";")}`);
-  const transport: D1Transport = { async batch(statements) {
-    return db.transaction(() => statements.map(({ sql, params = [] }) => {
-      const q = db.query(sql);
-      if (/^\s*(SELECT|WITH)\b|\bRETURNING\b/i.test(sql)) return { results: q.all(...params) as Record<string, unknown>[] };
-      const result = q.run(...params);
-      return { results: [], meta: { changes: result.changes, last_row_id: Number(result.lastInsertRowid) } };
-    }))();
-  } };
+  const transport: D1Transport = new SQLiteD1Transport(db);
   const store = new D1Store(transport); await store.ready();
   let runtime: ReturnType<typeof createRuntimeHandler>, queue: Promise<unknown> = Promise.resolve();
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch(request) {
@@ -115,7 +107,7 @@ try {
     await page.getByText("New topic reply", { exact: true }).waitFor(); assert.equal(await page.getByText("Old topic reply", { exact: true }).count(), 0);
     assert.deepEqual((await h.store.messages(fresh.id)).map(m => m.body), ["Replacement", "New topic reply"]);
   });
-  await scenario("5. Delayed admin send cannot switch back and replace the selected conversation", async h => {
+  await scenario("5. Delayed admin send/delete cannot replace the selected conversation", async h => {
     const a = await h.visitor("Alice", "Alice question"), b = await h.visitor("Bob", "Bob question");
     const sa = await h.session(a), sb = await h.session(b), inbox = await h.inbox();
     await inbox.locator(`[data-id="${sa.id}"]`).click();
@@ -126,6 +118,20 @@ try {
     await caught; await inbox.locator(`[data-id="${sb.id}"]`).click();
     await inbox.locator("#message-list").getByText("Bob question", { exact: true }).waitFor(); release();
     await a.getByText("Delayed Alice answer", { exact: true }).waitFor(); await inbox.waitForTimeout(1000);
+    assert.equal(await inbox.locator(`[data-id="${sb.id}"]`).getAttribute("aria-current"), "true");
+    await inbox.locator("#message-list").getByText("Bob question", { exact: true }).waitFor();
+    // A delayed delete acknowledgement must not clear a different selected chat.
+    await inbox.locator(`[data-id="${sa.id}"]`).click();
+    let releaseDelete!: () => void, capturedDelete!: () => void;
+    const deleteGate = new Promise<void>(r => releaseDelete = r), deleteCaught = new Promise<void>(r => capturedDelete = r);
+    await inbox.route(`**/api/admin/conversations/${sa.id}`, async route => {
+      if (route.request().method() !== "DELETE") { await route.continue(); return; }
+      const response = await route.fetch(); capturedDelete(); await deleteGate; await route.fulfill({ response });
+    });
+    await inbox.locator("#delete-button").click(); await inbox.locator("#confirm-action").click();
+    await deleteCaught; await inbox.locator(`[data-id="${sb.id}"]`).click();
+    await inbox.locator("#message-list").getByText("Bob question", { exact: true }).waitFor(); releaseDelete();
+    await inbox.waitForTimeout(1000);
     assert.equal(await inbox.locator(`[data-id="${sb.id}"]`).getAttribute("aria-current"), "true");
     await inbox.locator("#message-list").getByText("Bob question", { exact: true }).waitFor();
   });

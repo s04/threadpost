@@ -15,7 +15,17 @@
       "default": "./src/connectors.ts"
     }
   },
-  "files": ["src", "public", "scripts", "cloudflare/worker.ts", "cloudflare/tsconfig.json", "cloudflare/wrangler.example.jsonc", "tsconfig.json", "README.md", "LICENSE"],
+  "files": [
+    "src",
+    "public",
+    "scripts",
+    "cloudflare/worker.ts",
+    "cloudflare/tsconfig.json",
+    "cloudflare/wrangler.example.jsonc",
+    "tsconfig.json",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "bun run scripts/build.ts",
     "dev": "bun run build && bun --watch src/index.ts",
@@ -25,7 +35,12 @@
     "check": "bun run typecheck && bun test && bun run build",
     "check:browser": "bun run build && bun scripts/browser-smoke.ts",
     "check:messaging": "bun run build && bun scripts/messaging-e2e.ts",
-    "browser:install": "playwright-core install chromium"
+    "browser:install": "playwright-core install chromium",
+    "test:unit": "bun test tests/abuse.test.ts tests/runtime.test.ts tests/connectors-unit.test.ts",
+    "test:integration": "bun test tests/core.test.ts tests/d1-store.test.ts tests/http.test.ts tests/library.test.ts tests/messaging-app.test.ts tests/messaging-store.test.ts tests/recovery.test.ts tests/telegram-settings.test.ts tests/telegram-roundtrip.test.ts tests/lifecycle-integration.test.ts",
+    "test:e2e": "bun run build && bun scripts/browser-smoke.ts && bun scripts/messaging-e2e.ts",
+    "test:regression": "bun test tests/lifecycle-integration.test.ts && bun run check:messaging",
+    "check:all": "bun run check && bun scripts/browser-smoke.ts && bun scripts/messaging-e2e.ts"
   },
   "devDependencies": {
     "@cloudflare/containers": "0.3.7",

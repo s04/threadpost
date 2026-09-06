@@ -54,7 +54,9 @@ to the Bun container. D1 persists data through container sleep and restarts.
 Local deployments run Bun directly with SQLite. Browser notifications need an
 open page; they are not push notifications for a closed browser.
 
-**Checks:** `bun run check` runs type checking, tests, and browser builds locally.
+**Checks:** `bun run check:all` runs type checking, unit/integration tests, and
+browser regression scenarios locally. See the [testing guide](docs/testing.md)
+for individual commands and coverage boundaries.
 The badge links to the latest manually dispatched GitHub check; pushes do not
 start hosted CI.
 

@@ -4,7 +4,7 @@ Describe the concrete problem and resulting behavior.
 
 ## Validation
 
-- [ ] `bun run check`
+- [ ] `bun run check:all`
 - [ ] Documentation updated when setup or configuration changed
 - [ ] Tests and examples use synthetic data
 - [ ] No credentials, conversations, databases, or deployment-specific files are included

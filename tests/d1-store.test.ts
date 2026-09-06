@@ -1,22 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { D1Store, type D1Result, type D1Statement, type D1Transport } from "../src/d1-store";
+import { D1Store, type D1Statement } from "../src/d1-store";
 import { AppError } from "../src/store";
-import { schemaStatements } from "../src/schema";
+import { SQLiteD1Transport } from "./support/sqlite-d1";
 
-class SQLiteD1Transport implements D1Transport {
-  constructor(readonly db: Database) { db.exec(`PRAGMA foreign_keys=ON; ${schemaStatements.join(";")}`); }
-  async batch(statements: D1Statement[]): Promise<D1Result[]> {
-    return this.db.transaction(() => statements.map(({ sql, params = [] }) => {
-      const statement = this.db.query(sql);
-      if (/^\s*(SELECT|WITH)\b|\bRETURNING\b/i.test(sql)) {
-        return { results: statement.all(...params) as Record<string, unknown>[], meta: {} };
-      }
-      const result = statement.run(...params);
-      return { results: [], meta: { changes: result.changes, last_row_id: Number(result.lastInsertRowid) } };
-    }))();
-  }
-}
 
 const databases: Database[] = [];
 function setup() {
