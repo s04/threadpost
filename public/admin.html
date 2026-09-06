@@ -87,7 +87,7 @@
             <summary>Telegram setup instructions</summary>
             <ol>
               <li>Create a bot with <strong>@BotFather</strong> and copy its token.</li>
-              <li>Create a private forum group, then add the bot as an administrator with permission to manage topics.</li>
+              <li>Create a private group and enable <strong>Topics</strong> in its settings. Add the bot as an administrator with <strong>Manage Topics</strong> permission.</li>
               <li>Find the group’s numeric chat ID and each operator’s numeric Telegram user ID.</li>
             </ol>
             <p>Threadpost cannot discover these IDs for you. Only people whose numeric IDs you enter can send operator replies.</p>
@@ -96,9 +96,19 @@
             <label for="telegram-token">Bot token</label>
             <input id="telegram-token" name="botToken" type="password" autocomplete="new-password" required placeholder="Paste the token from BotFather">
             <div class="field-grid">
-              <div><label for="telegram-chat-id">Private forum chat ID</label><input id="telegram-chat-id" name="chatId" inputmode="numeric" required placeholder="-100…"></div>
+              <div><label for="telegram-chat-id">Private forum chat ID</label><input id="telegram-chat-id" name="chatId" inputmode="numeric" required placeholder="-100…" aria-describedby="telegram-chat-id-help"></div>
               <div><label for="telegram-operator-ids">Operator user IDs</label><input id="telegram-operator-ids" name="operatorIds" required placeholder="12345678, 87654321"></div>
             </div>
+            <details class="setup-guide" id="telegram-chat-id-help">
+              <summary>How to find your private forum chat ID</summary>
+              <ol>
+                <li>Open your private Telegram group with Topics enabled.</li>
+                <li>Long-press a message, or right-click it on desktop, and choose <strong>Copy Message Link</strong>.</li>
+                <li>In a link such as <code>https://t.me/c/1234567890/12/34</code>, take the first number after <code>/c/</code>: <code>1234567890</code>.</li>
+                <li>Put <code>-100</code> before that number and paste <code>-1001234567890</code> into the field above.</li>
+              </ol>
+              <p>Ignore the later topic and message numbers. Use a message link, not the group’s invite link. If Copy Message Link is unavailable on your phone, try Telegram Desktop.</p>
+            </details>
             <div class="form-action"><span id="telegram-error" class="form-error" role="alert"></span><button id="telegram-submit" class="button primary" type="submit">Connect Telegram</button></div>
           </form>
         </section>

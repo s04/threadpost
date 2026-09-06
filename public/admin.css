@@ -104,6 +104,7 @@ input:focus,textarea:focus,select:focus { border-color:var(--orange); }
 .setup-guide ol { margin:.8rem 0 .5rem; padding-left:1.2rem; }
 .setup-guide li + li { margin-top:.35rem; }
 .setup-guide p { margin:.6rem 0 0; }
+.setup-guide code { overflow-wrap:anywhere; }
 .settings-form label,.snippet-fields label { margin-top:1rem; }
 .field-grid { display:grid; gap:.75rem; grid-template-columns:1fr 1fr; }
 .form-action { align-items:center; display:flex; gap:1rem; justify-content:space-between; margin-top:1rem; }
