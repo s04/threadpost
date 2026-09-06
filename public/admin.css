@@ -60,6 +60,11 @@ input:focus,textarea:focus,select:focus { border-color:var(--orange); }
 .empty-thread { color:var(--muted); display:grid; height:100%; padding:2rem; place-content:center; text-align:center; }
 .empty-thread h2 { color:var(--ink); font-family:Georgia,serif; font-size:2rem; margin:1rem 0 0; }
 .empty-mark { color:var(--orange); font-size:2rem; }
+.first-run-empty { max-width:560px; }
+.first-run-empty h2 { font-size:clamp(2rem,5vw,3.25rem); line-height:1.05; margin:.55rem 0 1rem; }
+.first-run-empty > p:not(.eyebrow) { line-height:1.6; margin:0 auto; max-width:54ch; }
+.empty-actions { align-items:center; display:flex; flex-wrap:wrap; gap:.75rem; justify-content:center; margin-top:1.5rem; }
+.empty-actions a { display:inline-block; text-decoration:none; }
 .active-thread { display:flex; flex-direction:column; height:100%; }
 .thread-heading { border-bottom:1px solid var(--line); min-height:78px; }
 .thread-identity { flex:1; min-width:0; }

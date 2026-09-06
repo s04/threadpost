@@ -255,6 +255,8 @@ function renderOverview() {
 function renderList() {
   const list = $("conversation-list"); clear(list);
   show($("list-status"), state.conversations.length ? "" : "No conversations yet.");
+  $("first-run-empty").hidden = state.conversations.length > 0;
+  $("select-conversation-empty").hidden = state.conversations.length === 0;
   state.conversations.forEach((conversation) => {
     const unread = (Number(conversation.lastInboundId) || 0) > (readWatermarks.get(conversation.id) || 0);
     const button = el("button", `conversation-item${unread ? " unread" : ""}`); button.type = "button";
@@ -467,6 +469,12 @@ $("reply").addEventListener("input", () => { if (state.selectedId) drafts.set(st
 $("back-button").addEventListener("click", () => { document.body.classList.remove("thread-open"); if (state.selectedId) $("conversation-list").querySelector<HTMLElement>(`[data-id="${CSS.escape(state.selectedId)}"]`)?.focus(); });
 $("settings-button").addEventListener("click", () => {
   $<HTMLDialogElement>("settings-dialog").showModal();
+  void loadTelegram();
+});
+$("install-widget-button").addEventListener("click", () => {
+  $<HTMLDialogElement>("settings-dialog").showModal();
+  $("snippet-title").scrollIntoView({ block: "start" });
+  $<HTMLButtonElement>("copy-button").focus();
   void loadTelegram();
 });
 $("settings-close").addEventListener("click", () => $<HTMLDialogElement>("settings-dialog").close());

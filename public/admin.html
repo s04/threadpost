@@ -51,9 +51,20 @@
 
         <section id="thread-panel" class="thread-panel" aria-label="Conversation thread">
           <div id="empty-thread" class="empty-thread">
-            <span class="empty-mark" aria-hidden="true">↗</span>
-            <h2>Select a conversation</h2>
-            <p>Choose a message from the inbox to read and reply.</p>
+            <div id="select-conversation-empty">
+              <span class="empty-mark" aria-hidden="true">↗</span>
+              <h2>Select a conversation</h2>
+              <p>Choose a message from the inbox to read and reply.</p>
+            </div>
+            <div id="first-run-empty" class="first-run-empty" hidden>
+              <p class="eyebrow">Ready for your first message</p>
+              <h2>Put Threadpost on your site.</h2>
+              <p>Customize the widget snippet, paste it into an allowed website, then send a test message. New conversations will appear here automatically.</p>
+              <div class="empty-actions">
+                <button id="install-widget-button" class="button primary" type="button">Get the widget snippet</button>
+                <a class="button subtle" href="/">Try the local demo</a>
+              </div>
+            </div>
           </div>
           <div id="active-thread" class="active-thread" hidden>
             <header class="thread-heading">
