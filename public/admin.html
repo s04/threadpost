@@ -136,6 +136,21 @@
           </form>
           <p class="section-note">After connecting, start a new conversation from the widget in a private browser window. Existing Threadpost conversations stay in the browser inbox and are not replayed into Telegram.</p>
         </section>
+        <section class="settings-section" aria-labelledby="protection-title">
+          <div class="section-heading"><div><p class="eyebrow">Anti-spam protection</p><h3 id="protection-title">Cloudflare Turnstile</h3></div></div>
+          <p class="section-note">Verify new chats before they reach your inbox. Existing conversations continue without another challenge; rate limits still apply.</p>
+          <details class="setup-guide">
+            <summary>Turnstile setup instructions</summary>
+            <ol>
+              <li>In the Cloudflare dashboard, open <strong>Turnstile</strong>, add a widget, and choose <strong>Managed</strong> mode.</li>
+              <li>Allow the website hostnames where your chat is embedded. Also add their exact HTTPS origins to Threadpost's <code>ALLOWED_ORIGINS</code>.</li>
+              <li>Configure <code>TURNSTILE_SITE_KEY</code> and <code>TURNSTILE_SECRET_KEY</code> in your deployment, then restart or redeploy. Keep the secret server-side; no snippet changes are needed.</li>
+              <li>Open your website in a private browser window and start a new chat to test verification and delivery.</li>
+            </ol>
+            <p>Keys are managed on your host, not in this dashboard. Leaving both unset disables verification. Your website does not need to be hosted on Cloudflare.</p>
+            <p><a href="https://github.com/s04/threadpost/blob/main/docs/turnstile-setup.md" target="_blank" rel="noopener noreferrer">Open the complete Turnstile setup guide</a> for Docker and Cloudflare deployment steps, troubleshooting, local testing, and privacy details.</p>
+          </details>
+        </section>
         <section class="settings-section" aria-labelledby="snippet-title">
           <div class="section-heading"><div><p class="eyebrow">Widget appearance</p><h3 id="snippet-title">Snippet customization</h3></div></div>
           <p class="section-note">These controls customize the copied snippet. They do not change site-wide settings.</p>

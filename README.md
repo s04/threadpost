@@ -340,6 +340,9 @@ For public deployments, configure both `TURNSTILE_SITE_KEY` and
 The server validates the proof, hostname and `start_chat` action before creating
 a chat. Existing authenticated conversations do not need another challenge.
 Keep the secret server-side. Local development can leave both keys unset.
+See the [Turnstile setup guide](docs/turnstile-setup.md) for deployment steps,
+hostnames, testing, troubleshooting, and privacy details. The admin dashboard
+also includes a setup checklist under Anti-spam protection.
 
 Operators can block or unblock a conversation. Blocking stops new visitor
 messages and holds queued delivery until unblocked; it is not a person-level
