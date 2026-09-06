@@ -49,6 +49,9 @@ try {
   await inbox.locator("#reply").fill("Yes, without refreshing.");
   await inbox.locator('#reply-form button[type="submit"]').click();
   await page.getByText("Yes, without refreshing.", { exact: true }).waitFor({ timeout: 15_000 });
+  const conversation = store.list()[0] as { id: string };
+  await inbox.goto(`${origin}/admin?conversation=${conversation.id}`);
+  await inbox.locator("#message-list").getByText("Does automatic messaging work?", { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
 
   await inbox.locator("#block-button").click();
