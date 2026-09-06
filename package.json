@@ -22,12 +22,15 @@
     "start": "bun run build && bun src/index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit && tsc --project cloudflare/tsconfig.json",
-    "check": "bun run typecheck && bun test && bun run build"
+    "check": "bun run typecheck && bun test && bun run build",
+    "check:browser": "bun run build && bun scripts/browser-smoke.ts",
+    "browser:install": "playwright-core install chromium"
   },
   "devDependencies": {
     "@cloudflare/containers": "0.3.7",
     "@cloudflare/workers-types": "5.20260905.1",
     "@types/bun": "1.3.10",
+    "playwright-core": "1.63.0",
     "typescript": "5.9.3",
     "wrangler": "4.129.0"
   }

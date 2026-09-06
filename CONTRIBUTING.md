@@ -1,5 +1,18 @@
 # Contributing to Threadpost
 
+For changes to the widget, inbox, authentication, or content security policy,
+also run the isolated browser smoke test:
+
+```sh
+bun run browser:install
+bun run check:browser
+```
+
+It starts an in-memory local demo and never connects to Telegram. To reuse an
+existing Chromium installation, set `CHROMIUM_PATH` to its executable instead
+of installing a browser. Browser binaries are not included in normal installs;
+this check is opt-in so ordinary local checks and manual CI remain lightweight.
+
 Thank you for helping improve Threadpost.
 
 ## Development setup
