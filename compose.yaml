@@ -11,10 +11,15 @@ services:
       PORT: 8788
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8788}
       ADMIN_TOKEN: ${ADMIN_TOKEN:?Set ADMIN_TOKEN to a unique value of at least 32 characters}
+      SETTINGS_KEY: ${SETTINGS_KEY:-}
       DB_PATH: /app/data/threadpost.sqlite
       SITE_ID: ${SITE_ID:-demo}
       SITE_NAME: ${SITE_NAME:-Demo site}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8788}
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      MAX_NEW_CONVERSATIONS_PER_DAY: ${MAX_NEW_CONVERSATIONS_PER_DAY:-200}
+      MAX_MESSAGES_PER_DAY: ${MAX_MESSAGES_PER_DAY:-5000}
       CONNECTOR: ${CONNECTOR:-demo}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
