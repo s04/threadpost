@@ -1,0 +1,57 @@
+name: Bug report
+description: Report a reproducible problem in Threadpost.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: Do not include tokens, private messages, database files, or other sensitive data. Use the private security reporting link for vulnerabilities.
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How can we reproduce it?
+      description: Include the smallest synthetic example and exact steps.
+      placeholder: |
+        1. Start Threadpost with the demo connector
+        2. Open …
+        3. Observe …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v0.1.0 or a commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      options:
+        - Local Bun and SQLite
+        - Docker Compose
+        - Cloudflare Container and D1
+        - Library integration
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, Bun version, browser if relevant, and connector type. Redact secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant sanitized logs
+      description: Paste only the minimum output needed to understand the failure.
+      render: shell

@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose a focused improvement to the single-workspace chat bridge.
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the real workflow and who encounters the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior
+      description: Explain the smallest useful outcome. Threadpost currently supports one workspace and text messages only.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Share workarounds or smaller changes that might solve the same problem.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This request does not include private messages, credentials, or customer data.
+          required: true
