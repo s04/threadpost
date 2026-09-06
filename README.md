@@ -115,7 +115,7 @@ The widget derives the API address from the script URL. Conversation credentials
 | `TELEGRAM_OPERATOR_IDS` | empty | Comma-separated Telegram user IDs allowed to operate the bot. |
 | `TELEGRAM_WEBHOOK_SECRET` | empty | Webhook secret of at least 32 characters, required by the Telegram connector. |
 
-`PUBLIC_URL` must be an origin without a path, query, or fragment. Use exact allowed origins such as `https://www.example.com`, without paths or wildcards. Threadpost always adds `PUBLIC_URL` to the allowed list. In production, serve Threadpost over HTTPS and set `PUBLIC_URL` to that HTTPS origin.
+`PUBLIC_URL` must be an origin without a path, query, or fragment. Use exact allowed origins such as `https://www.example.com`, without paths or wildcards. Threadpost always adds `PUBLIC_URL` to the allowed list. Both `PUBLIC_URL` and every embedding origin must use HTTPS; plain HTTP is accepted only for `localhost`, `127.0.0.1`, and `[::1]` during local development.
 
 ## Docker Compose
 
