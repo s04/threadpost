@@ -21,7 +21,8 @@
             <button class="button primary" type="submit">Sign in</button>
           </div>
           <p id="login-error" class="form-error" role="alert" hidden></p>
-          <p class="section-note">Stay signed in on this browser for 30 days. Log out when you finish on a shared device.</p>
+          <label class="remember-session" for="remember-session"><input id="remember-session" name="rememberSession" type="checkbox" aria-describedby="session-help">Keep me signed in for 30 days</label>
+          <p id="session-help" class="section-note">Otherwise, you’ll stay signed in for 8 hours. Only select this on a device you trust.</p>
         </form>
       </section>
     </main>

@@ -91,11 +91,25 @@ async function login() {
   const setCookie = response.headers.get("set-cookie");
   expect(setCookie).toContain("HttpOnly");
   expect(setCookie).toContain("SameSite=Strict");
-  expect(setCookie).toContain("Max-Age=2592000");
+  expect(setCookie).toContain("Max-Age=28800");
   return setCookie!.split(";", 1)[0];
 }
 
 describe("admin authentication and request origin", () => {
+  test("only explicit remember-me opt-in grants 30 days in both cookie and database", async () => {
+    for (const rememberSession of [false, true, "true"]) {
+      const before = Date.now();
+      const response = await app(fakeRequest("/api/admin/login", {
+        method: "POST", body: { token: config.adminToken, rememberSession },
+      }));
+      const seconds = rememberSession === true ? 2592000 : 28800;
+      expect(response.status).toBe(200);
+      expect(response.headers.get("set-cookie")).toContain(`Max-Age=${seconds}`);
+      const row = store.db.query("SELECT expires_at AS expiresAt FROM admin_sessions ORDER BY rowid DESC LIMIT 1").get() as { expiresAt: number };
+      expect(row.expiresAt).toBeGreaterThanOrEqual(before + seconds * 1000);
+      expect(row.expiresAt).toBeLessThanOrEqual(Date.now() + seconds * 1000);
+    }
+  });
   test("admin endpoints require a session, login sets a protected cookie, and logout invalidates it", async () => {
     expect((await app(fakeRequest("/api/admin/overview", { origin: null }))).status).toBe(401);
 

@@ -57,6 +57,7 @@ function setAuthenticated(authenticated: boolean) {
   $("admin-view").hidden = !authenticated;
   if (authenticated) $<HTMLInputElement>("token").value = "";
   if (!authenticated) {
+    $<HTMLInputElement>("remember-session").checked = false;
     document.querySelectorAll<HTMLDialogElement>("dialog[open]").forEach(dialog => dialog.close());
     if (pollTimer !== undefined) window.clearTimeout(pollTimer);
     state.overview = null; state.conversations = []; state.selectedId = null; state.conversation = null;
@@ -452,7 +453,7 @@ async function pollNow() {
 
 $("login-form").addEventListener("submit", async (event) => {
   event.preventDefault(); const form = event.currentTarget as HTMLFormElement; const button = form.querySelector<HTMLButtonElement>("button")!; button.disabled = true; show($("login-error"), "");
-  try { await api<{ ok: true }>("/api/admin/login", { method: "POST", body: JSON.stringify({ token: $<HTMLInputElement>("token").value }) }); await loadApp(); }
+  try { await api<{ ok: true }>("/api/admin/login", { method: "POST", body: JSON.stringify({ token: $<HTMLInputElement>("token").value, rememberSession: $<HTMLInputElement>("remember-session").checked }) }); await loadApp(); }
   catch (error) { handleError(error, $("login-error")); }
   finally { button.disabled = false; }
 });

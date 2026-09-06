@@ -58,7 +58,6 @@ export function createApp(config: Config, bridge: Bridge, options: { workspaceBi
   const ready = Promise.resolve().then(() => store.bindWorkspace(
     options.workspaceBinding || `${config.siteId}:${config.connector}:${config.telegramChatId}:${config.telegramToken.split(":")[0]}`
   )).then(() => null, error => error);
-  const sessionAge = 30 * 24 * 3600;
   const sessionHash = (token: string) => hash(`threadpost:admin-session:${config.siteId}:${config.adminToken}:${token}`);
   const cookie = (token: string, age: number) => `threadpost_session=${token}; HttpOnly; SameSite=Strict; Path=/api/admin; Max-Age=${age}${config.publicUrl.startsWith("https:") ? "; Secure" : ""}`;
   const sessionKey = (request: Request) => sessionHash(request.headers.get("cookie")?.match(/(?:^|;\s*)threadpost_session=([^;]+)/)?.[1] || "");
@@ -94,6 +93,7 @@ export function createApp(config: Config, bridge: Bridge, options: { workspaceBi
         await quota(`login:${ip}`, 10, 60_000, "Too many attempts. Try again in a minute.");
         const data = await body(request);
         if (typeof data.token !== "string" || !safeEqual(data.token, config.adminToken)) throw new AppError(401, "Incorrect operator token.");
+        const sessionAge = data.rememberSession === true ? 30 * 24 * 3600 : 8 * 3600;
         const token = secret(), now = Date.now();
         if (!await store.createAdminSession(sessionHash(token), now + sessionAge * 1000, now))
           throw new AppError(429, "Too many active operator sessions. Sign out on another device and try again.");

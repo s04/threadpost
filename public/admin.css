@@ -21,6 +21,8 @@ button:disabled { cursor:wait; opacity:.55; }
 .login-view { display:grid; min-height:100vh; padding:2rem; place-items:center; }
 .login-card { background:var(--paper); border:1px solid var(--line); box-shadow:var(--shadow); max-width:520px; padding:clamp(2rem,6vw,4rem); width:100%; }
 .login-card .wordmark { display:inline-block; margin-bottom:4rem; }
+.remember-session { display:flex; align-items:center; gap:.65rem; margin-top:1rem; cursor:pointer; }
+.remember-session input { width:1rem; height:1rem; padding:0; flex-shrink:0; accent-color:var(--orange); }
 .login-card h1 { font-family:Georgia,serif; font-size:clamp(2rem,6vw,3rem); letter-spacing:-.04em; line-height:1; margin:.5rem 0 1rem; }
 label { display:block; font-size:.78rem; font-weight:800; margin:1.5rem 0 .5rem; }
 input,textarea,select { background:#fff; border:1px solid #aaa395; border-radius:7px; color:var(--ink); padding:.78rem; width:100%; }

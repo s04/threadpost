@@ -218,11 +218,13 @@ operator permissions before a shared deployment can safely host separate apps.
 
 This starter supports text only and lists the latest 200 conversations in the
 panel. Visitor credentials expire after 30 days; stored conversations are not
-automatically deleted. Operator sessions expire 30 days after sign-in. The browser
+automatically deleted. Operator sessions expire eight hours after sign-in by default.
+Selecting **Keep me signed in for 30 days** extends that login to 30 days. Both
+options survive server restarts; use the longer duration only on trusted devices. The browser
 stores an HttpOnly, SameSite=Strict cookie (Secure over HTTPS); only a token hash
 is persisted in SQLite or D1. Logout revokes that session immediately. Rotating
 the admin token invalidates all existing sessions. Background polling does not
-extend the 30-day expiration.
+extend the selected expiration. Existing sessions retain the expiry set when they were created.
 
 Existing D1 installations must apply `cloudflare/migrations/0003-admin-sessions.sql`
 before deploying persistent sessions. The migration is safe to rerun. Local
