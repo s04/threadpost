@@ -21,6 +21,8 @@ export const schemaStatements = [
   `INSERT OR IGNORE INTO connector_events (connector,event_id,created_at)
     SELECT 'telegram',cast(id AS TEXT),created_at FROM telegram_updates`,
   `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS admin_sessions (token_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS admin_sessions_expiry ON admin_sessions(expires_at)`,
   `CREATE TABLE IF NOT EXISTS rate_limits (
     key TEXT PRIMARY KEY, window_start INTEGER NOT NULL, expires_at INTEGER NOT NULL, count INTEGER NOT NULL
   )`,

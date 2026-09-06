@@ -33,6 +33,20 @@ beforeEach(() => {
   app = createApp(config, bridge);
 });
 
+test("persistent admin cookies survive app restarts, expire, and revoke on logout or token rotation", async () => {
+  const cookie = await login();
+  app = createApp(config, new Bridge(store, new DemoConnector()));
+  expect((await app(fakeRequest("/api/admin/overview", { cookie }))).status).toBe(200);
+  const rotated = createApp({ ...config, adminToken: "different-synthetic-admin-token-32-characters" }, new Bridge(store, new DemoConnector()));
+  expect((await rotated(fakeRequest("/api/admin/overview", { cookie }))).status).toBe(401);
+  expect((await app(fakeRequest("/api/admin/logout", { method: "POST", cookie }))).status).toBe(200);
+  app = createApp(config, new Bridge(store, new DemoConnector()));
+  expect((await app(fakeRequest("/api/admin/overview", { cookie }))).status).toBe(401);
+  const next = await login();
+  store.db.query("UPDATE admin_sessions SET expires_at=?").run(Date.now() - 1);
+  expect((await app(fakeRequest("/api/admin/overview", { cookie: next }))).status).toBe(401);
+});
+
 function fakeRequest(path: string, options: {
   method?: string;
   body?: unknown;
@@ -77,6 +91,7 @@ async function login() {
   const setCookie = response.headers.get("set-cookie");
   expect(setCookie).toContain("HttpOnly");
   expect(setCookie).toContain("SameSite=Strict");
+  expect(setCookie).toContain("Max-Age=2592000");
   return setCookie!.split(";", 1)[0];
 }
 

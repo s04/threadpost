@@ -41,6 +41,9 @@ export interface Storage {
   delete(id: string): MaybePromise<void>;
   receiveReply(connector: string, eventId: string, threadId: string, body: string): MaybePromise<boolean>;
   getSetting(key: string): MaybePromise<string | null>;
+  createAdminSession(tokenHash: string, expiresAt: number, now: number): MaybePromise<boolean>;
+  validAdminSession(tokenHash: string, now: number): MaybePromise<boolean>;
+  deleteAdminSession(tokenHash: string): MaybePromise<void>;
   setSetting(key: string, value: string): MaybePromise<void>;
   resetThreads(): MaybePromise<void>;
   saveTelegramSettings(value: string, resetThreads: boolean): MaybePromise<void>;
@@ -67,6 +70,16 @@ export class Store implements Storage {
     this.db.exec(recoveryStatements.join(";"));
   }
   ready() {}
+  createAdminSession(tokenHash: string, expiresAt: number, now: number) {
+    return this.db.transaction(() => {
+      this.db.query("DELETE FROM admin_sessions WHERE expires_at<=?").run(now);
+      return this.db.query("INSERT INTO admin_sessions (token_hash,expires_at) SELECT ?,? WHERE (SELECT count(*) FROM admin_sessions)<100").run(tokenHash, expiresAt).changes === 1;
+    })();
+  }
+  validAdminSession(tokenHash: string, now: number) {
+    return Boolean(this.db.query("SELECT 1 FROM admin_sessions WHERE token_hash=? AND expires_at>?").get(tokenHash, now));
+  }
+  deleteAdminSession(tokenHash: string) { this.db.query("DELETE FROM admin_sessions WHERE token_hash=?").run(tokenHash); }
   close() { this.db.close(); }
   bindWorkspace(binding: string) {
     const existing = this.db.query("SELECT value FROM settings WHERE key='workspace'").get() as { value: string } | null;

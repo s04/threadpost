@@ -58,16 +58,16 @@ export function createApp(config: Config, bridge: Bridge, options: { workspaceBi
   const ready = Promise.resolve().then(() => store.bindWorkspace(
     options.workspaceBinding || `${config.siteId}:${config.connector}:${config.telegramChatId}:${config.telegramToken.split(":")[0]}`
   )).then(() => null, error => error);
-  const sessions = new Map<string, number>();
+  const sessionAge = 30 * 24 * 3600;
+  const sessionHash = (token: string) => hash(`threadpost:admin-session:${config.siteId}:${config.adminToken}:${token}`);
   const cookie = (token: string, age: number) => `threadpost_session=${token}; HttpOnly; SameSite=Strict; Path=/api/admin; Max-Age=${age}${config.publicUrl.startsWith("https:") ? "; Secure" : ""}`;
-  const sessionKey = (request: Request) => hash(request.headers.get("cookie")?.match(/(?:^|;\s*)threadpost_session=([^;]+)/)?.[1] || "");
+  const sessionKey = (request: Request) => sessionHash(request.headers.get("cookie")?.match(/(?:^|;\s*)threadpost_session=([^;]+)/)?.[1] || "");
   const originAllowed = (request: Request) => !request.headers.has("origin") || config.origins.includes(request.headers.get("origin")!);
   async function quota(key: string, max: number, periodMs: number, message: string) {
     if (!await store.consumeQuota(hash(`${config.adminToken}:${key}`), max, periodMs)) throw new AppError(429, message);
   }
-  function admin(request: Request) {
-    const key = sessionKey(request), expiry = sessions.get(key);
-    if (!expiry || expiry < Date.now()) { sessions.delete(key); throw new AppError(401, "Sign in to continue."); }
+  async function admin(request: Request) {
+    if (!await store.validAdminSession(sessionKey(request), Date.now())) throw new AppError(401, "Sign in to continue.");
     if (request.method !== "GET" && request.headers.get("origin") !== config.publicUrl)
       throw new AppError(403, "Operator requests must come from this site's origin.");
   }
@@ -94,14 +94,14 @@ export function createApp(config: Config, bridge: Bridge, options: { workspaceBi
         await quota(`login:${ip}`, 10, 60_000, "Too many attempts. Try again in a minute.");
         const data = await body(request);
         if (typeof data.token !== "string" || !safeEqual(data.token, config.adminToken)) throw new AppError(401, "Incorrect operator token.");
-        for (const [key, until] of sessions) if (until < Date.now()) sessions.delete(key);
-        if (sessions.size >= 100) throw new AppError(429, "Too many active operator sessions.");
-        const token = secret(); sessions.set(hash(token), Date.now() + 8 * 3600_000);
-        response = json({ ok: true }); response.headers.set("Set-Cookie", cookie(token, 8 * 3600));
+        const token = secret(), now = Date.now();
+        if (!await store.createAdminSession(sessionHash(token), now + sessionAge * 1000, now))
+          throw new AppError(429, "Too many active operator sessions. Sign out on another device and try again.");
+        response = json({ ok: true }); response.headers.set("Set-Cookie", cookie(token, sessionAge));
       } else if (path.startsWith("/api/admin/")) {
-        admin(request);
+        await admin(request);
         if (path === "/api/admin/logout" && request.method === "POST") {
-          sessions.delete(sessionKey(request)); response = json({ ok: true }); response.headers.set("Set-Cookie", cookie("", 0));
+          await store.deleteAdminSession(sessionKey(request)); response = json({ ok: true }); response.headers.set("Set-Cookie", cookie("", 0));
         } else if (path === "/api/admin/telegram") {
           if (!options.telegram) throw new AppError(503, "Telegram setup is unavailable in this host.");
           if (request.method === "GET") response = json(await options.telegram.status());

@@ -121,8 +121,8 @@ bunx wrangler deploy --config .deploy/wrangler.jsonc
 The example limits the deployment to one Container instance. Its Durable
 Object serializes requests for the workspace, while D1 keeps conversations and
 messages when the Container sleeps. The Container sleeps after two idle
-minutes, so the next request can incur a cold start. Admin sessions remain in
-process memory and require another login after a restart or sleep.
+minutes, so the next request can incur a cold start. Admin sessions persist in
+D1 and survive restarts, deployments, and container sleep.
 
 The adapter starts with the `demo` connector. Open **Settings → Telegram** in
 the admin panel to connect a bot and private forum group. The form verifies the
@@ -218,7 +218,15 @@ operator permissions before a shared deployment can safely host separate apps.
 
 This starter supports text only and lists the latest 200 conversations in the
 panel. Visitor credentials expire after 30 days; stored conversations are not
-automatically deleted. Operator sessions expire after eight hours or restart.
+automatically deleted. Operator sessions expire 30 days after sign-in. The browser
+stores an HttpOnly, SameSite=Strict cookie (Secure over HTTPS); only a token hash
+is persisted in SQLite or D1. Logout revokes that session immediately. Rotating
+the admin token invalidates all existing sessions. Background polling does not
+extend the 30-day expiration.
+
+Existing D1 installations must apply `cloudflare/migrations/0003-admin-sessions.sql`
+before deploying persistent sessions. The migration is safe to rerun. Local
+SQLite creates the session table automatically.
 Persistent quotas allow five new conversations per IP per minute, 20 per IP per
 day, 30 messages per conversation per minute, and 120 messages per IP per minute.
 Workspace daily defaults are 200 new conversations and 5,000 messages; configure

@@ -27,6 +27,18 @@ function setup() {
 afterEach(() => { while (databases.length) databases.pop()!.close(); });
 
 describe("D1Store", () => {
+  test("admin sessions persist across restarts with expiration, revocation, and bounded storage", async () => {
+    const { transport, store } = setup();
+    expect(await store.createAdminSession("hash-only", 2000, 1000)).toBe(true);
+    const restarted = new D1Store(transport); await restarted.ready();
+    expect(await restarted.validAdminSession("hash-only", 1999)).toBe(true);
+    expect(await restarted.validAdminSession("hash-only", 2000)).toBe(false);
+    await restarted.deleteAdminSession("hash-only");
+    expect(await store.validAdminSession("hash-only", 1001)).toBe(false);
+    for (let i = 0; i < 100; i++) expect(await store.createAdminSession(`hash-${i}`, 2000, 1000)).toBe(true);
+    expect(await store.createAdminSession("overflow", 3000, 1000)).toBe(false);
+    expect(await store.createAdminSession("after-expiry", 3000, 2000)).toBe(true);
+  });
   test("persists attribution, blocking, inbound watermarks, and quotas", async () => {
     const { transport, store } = setup(); await store.ready();
     const conversation = await store.create("Visitor", undefined, { origin: "https://site.example", path: "/contact" });

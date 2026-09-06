@@ -27,6 +27,19 @@ export class D1Store implements Storage {
   async initialize() { await this.transport.batch(recoveryStatements.map(sql => ({ sql }))); }
   async ready() { await this.initialize(); }
   async close() {}
+  async createAdminSession(tokenHash: string, expiresAt: number, now: number) {
+    const result = await this.transport.batch([
+      { sql: "DELETE FROM admin_sessions WHERE expires_at<=?", params: [now] },
+      { sql: "INSERT INTO admin_sessions (token_hash,expires_at) SELECT ?,? WHERE (SELECT count(*) FROM admin_sessions)<100 RETURNING token_hash", params: [tokenHash, expiresAt] },
+    ]);
+    return result[1].results.length === 1;
+  }
+  async validAdminSession(tokenHash: string, now: number) {
+    return (await this.query("SELECT 1 FROM admin_sessions WHERE token_hash=? AND expires_at>?", [tokenHash, now])).length === 1;
+  }
+  async deleteAdminSession(tokenHash: string) {
+    await this.query("DELETE FROM admin_sessions WHERE token_hash=?", [tokenHash]);
+  }
 
   async bindWorkspace(binding: string) {
     const [existing] = await this.query<{ value: string }>("SELECT value FROM settings WHERE key='workspace'");
