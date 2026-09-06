@@ -103,9 +103,23 @@ export class TelegramSettings {
         signal: AbortSignal.timeout(12_000),
       });
       const data = await response.json() as { ok?: boolean; result?: unknown };
-      if (!response.ok || data.ok !== true) throw new Error();
+      if (!response.ok || data.ok !== true) {
+        const guidance: Record<string, string> = {
+          getMe: "Telegram rejected the bot token. Copy the current token from BotFather and try again.",
+          getChat: "Telegram could not access that group. Check the -100 chat ID and add your bot to the group.",
+          getChatMember: "Telegram could not check the bot’s permissions. Make the bot a group administrator with Manage Topics permission.",
+          getWebhookInfo: "Telegram could not check the bot’s webhook. Try again shortly.",
+          setWebhook: "Telegram could not register the webhook. Check the server’s public HTTPS address and try again.",
+        };
+        throw new AppError(502, response.status === 429 ? "Telegram is rate limiting setup requests. Wait a minute before trying again."
+          : response.status >= 500 ? "Telegram is temporarily unavailable. Try again shortly."
+          : guidance[method] || "Telegram rejected this setup request.");
+      }
       return data.result as any;
-    } catch { throw new AppError(502, "Telegram could not verify these settings. Try again."); }
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      throw new AppError(502, "Could not reach Telegram while checking " + ({ getMe: "the bot token", getChat: "the group", getChatMember: "bot permissions", getWebhookInfo: "the existing webhook", setWebhook: "webhook registration" }[method] || "setup") + ". Try again shortly.");
+    }
   }
   private encrypt(value: StoredTelegramConfig) {
     const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", this.key, iv);

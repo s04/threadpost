@@ -101,13 +101,19 @@
             </div>
             <details class="setup-guide" id="telegram-chat-id-help">
               <summary>How to find your private forum chat ID</summary>
+              <p>Open your private group with <strong>Topics</strong> enabled, enter a topic such as General, and find a message inside it. Open the menu on the message bubble, not on the topic name or group title.</p>
+              <ul>
+                <li><strong>Mobile (Android / iPhone):</strong> Long-press the message bubble and choose <strong>Copy Message Link</strong> or <strong>Copy Link</strong>. If long-press selects the message, look in the selection toolbar’s <strong>⋮ / More</strong> menu. On Android, a single tap on the bubble may open the message menu instead.</li>
+                <li><strong>Desktop (Windows / Mac / Linux):</strong> Right-click the message bubble (Control-click on Mac also works), then choose <strong>Copy Message Link</strong> or <strong>Copy Link</strong>.</li>
+                <li><strong>Web:</strong> Open <a href="https://web.telegram.org/" target="_blank" rel="noopener noreferrer">Telegram Web</a>, enter the group and topic, then right-click the message bubble and choose <strong>Copy Message Link</strong> or <strong>Copy Link</strong>. On a touch device, long-press to open the message menu.</li>
+              </ul>
+              <p>Convert the copied link into a chat ID:</p>
               <ol>
-                <li>Open your private Telegram group with Topics enabled.</li>
-                <li>Long-press a message, or right-click it on desktop, and choose <strong>Copy Message Link</strong>.</li>
                 <li>In a link such as <code>https://t.me/c/1234567890/12/34</code>, take the first number after <code>/c/</code>: <code>1234567890</code>.</li>
                 <li>Put <code>-100</code> before that number and paste <code>-1001234567890</code> into the field above.</li>
               </ol>
-              <p>Ignore the later topic and message numbers. Use a message link, not the group’s invite link. If Copy Message Link is unavailable on your phone, try Telegram Desktop.</p>
+              <p>Ignore the later topic and message numbers. Use a message link, not a <code>t.me/+…</code> invite link. If the option is missing, check that Topics is enabled and try an ordinary text message inside a topic. Menu wording varies by Telegram version; try Desktop or Web if your mobile app does not show it.</p>
+              <p>Official Telegram references: <a href="https://core.telegram.org/api/links#message-links" target="_blank" rel="noopener noreferrer">message link format</a> and <a href="https://core.telegram.org/api/bots/ids#supergroup-channel-ids" target="_blank" rel="noopener noreferrer">Bot API group ID format</a>.</p>
             </details>
             <div class="form-action"><span id="telegram-error" class="form-error" role="alert"></span><button id="telegram-submit" class="button primary" type="submit">Connect Telegram</button></div>
           </form>

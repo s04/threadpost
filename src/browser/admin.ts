@@ -57,6 +57,7 @@ function setAuthenticated(authenticated: boolean) {
   $("admin-view").hidden = !authenticated;
   if (authenticated) $<HTMLInputElement>("token").value = "";
   if (!authenticated) {
+    document.querySelectorAll<HTMLDialogElement>("dialog[open]").forEach(dialog => dialog.close());
     if (pollTimer !== undefined) window.clearTimeout(pollTimer);
     state.overview = null; state.conversations = []; state.selectedId = null; state.conversation = null;
     setTimeout(() => $<HTMLInputElement>("token").focus(), 0);
@@ -64,7 +65,10 @@ function setAuthenticated(authenticated: boolean) {
 }
 
 function handleError(error: unknown, target: HTMLElement) {
-  const known = error instanceof HttpError ? error : new HttpError(500, "Something went wrong.");
+  const known = error instanceof HttpError ? error : new HttpError(500,
+    error instanceof DOMException && error.name === "TimeoutError"
+      ? "The request timed out. Check the connection status before trying again."
+      : "Could not reach the server. Check your connection and try again.");
   if (known.status === 401) {
     setAuthenticated(false);
     show($("login-error"), "Your session has ended. Sign in again.");
@@ -470,15 +474,24 @@ $("telegram-form").addEventListener("submit", async (event) => {
   const button = $<HTMLButtonElement>("telegram-submit");
   const token = $<HTMLInputElement>("telegram-token");
   const operatorIds = $<HTMLInputElement>("telegram-operator-ids").value.split(/[\s,]+/).map(value => value.trim()).filter(Boolean);
-  button.disabled = true; show($("telegram-error"), "");
+  if (button.disabled) return;
+  button.disabled = true; button.textContent = "Connecting…";
+  show($("telegram-error"), "");
+  show($("telegram-status"), "Checking your bot, group permissions, and webhook. This may take up to a minute…");
   try {
     const connection = await api<TelegramConnection>("/api/admin/telegram", { method: "POST", body: JSON.stringify({
-      botToken: token.value, chatId: $<HTMLInputElement>("telegram-chat-id").value.trim(), operatorIds,
-    }) });
+      botToken: token.value.trim(), chatId: $<HTMLInputElement>("telegram-chat-id").value.trim(), operatorIds,
+    }), signal: AbortSignal.timeout(75_000) });
     token.value = "";
     renderTelegram(connection);
-  } catch (error) { handleError(error, $("telegram-error")); }
-  finally { button.disabled = false; }
+  } catch (error) {
+    handleError(error, $("telegram-error"));
+    if (!(error instanceof HttpError && error.status === 401)) {
+      show($("telegram-status"), $("telegram-error").textContent || "Connection could not be completed.");
+      $("telegram-error").scrollIntoView({ block: "nearest" });
+    }
+  }
+  finally { button.disabled = false; if (button.textContent === "Connecting…") button.textContent = "Connect Telegram"; }
 });
 ["widget-title", "widget-greeting", "widget-color", "widget-position"].forEach(id => {
   $(id).addEventListener("input", renderEmbedSnippet);

@@ -28,6 +28,26 @@ function telegramMock(calls: { method: string; payload: any }[]) {
 }
 
 describe("TelegramSettings", () => {
+  test("reports the failed setup step without exposing provider errors or credentials", async () => {
+    for (const failedMethod of ["getMe", "getChat"]) {
+      const store = new Store(":memory:"); databases.push(store);
+      const transport = (async (url: string | URL | Request) => {
+        const method = String(url).split("/").pop();
+        return method === failedMethod
+          ? Response.json({ ok: false, description: "sensitive provider detail 123:synthetic-token" }, { status: 400 })
+          : Response.json({ ok: true, result: { id: 123, is_bot: true, username: "synthetic_bot" } });
+      }) as typeof fetch;
+      const service = new TelegramSettings(config(), new Bridge(store, new DemoConnector()), key, transport);
+      try {
+        await service.connect({ botToken: "123:synthetic-token", chatId: "-10042", operatorIds: ["7"] });
+        throw new Error("Expected rejection");
+      } catch (error) {
+        expect(String(error)).toContain(failedMethod === "getMe" ? "BotFather" : "-100 chat ID");
+        expect(String(error)).not.toContain("synthetic-token");
+        expect(String(error)).not.toContain("sensitive provider detail");
+      }
+    }
+  });
   test("verifies Telegram, encrypts credentials, and resets demo thread mappings once", async () => {
     const store = new Store(":memory:"); databases.push(store);
     const visitor = store.create("Visitor"); store.add(visitor.id, "outbound", "history", "historic-one");
