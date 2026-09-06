@@ -52,8 +52,7 @@ open page; they are not push notifications for a closed browser.
 
 **Checks:** `bun run check` runs type checking, tests, and browser builds locally.
 The badge links to the latest manually dispatched GitHub check; pushes do not
-start hosted CI. Badges for a private repository may be unavailable until the
-repository is public.
+start hosted CI.
 
 ## Requirements
 
@@ -236,8 +235,8 @@ also needs an authenticated inbound handler that resolves its thread to exactly
 one conversation. The Telegram adapter is the reference implementation.
 
 Package entry points are `threadpost` (Bun server library) and
-`threadpost/connectors` (transport contract and adapters). This private starter
-has not been published to npm; use a local path dependency to develop against
+`threadpost/connectors` (transport contract and adapters). The package has not
+been published to npm; use a local path dependency to develop against
 it. The bundled SQLite store requires Bun. The connector contract itself does
 not depend on Bun.
 
