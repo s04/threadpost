@@ -8,7 +8,8 @@ export interface Config {
 
 export function readConfig(env: Record<string, string | undefined> = process.env): Config {
   const publicUrl = new URL(env.PUBLIC_URL || "http://localhost:8788");
-  const local = ["localhost", "127.0.0.1", "[::1]"].includes(publicUrl.hostname);
+  const loopback = (hostname: string) => ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
+  const local = loopback(publicUrl.hostname);
   if ((!local && publicUrl.protocol !== "https:") || !["http:", "https:"].includes(publicUrl.protocol)
       || publicUrl.username || publicUrl.password || publicUrl.pathname !== "/" || publicUrl.search || publicUrl.hash)
     throw new Error("PUBLIC_URL must be an HTTPS origin (HTTP is allowed for localhost).");
@@ -17,10 +18,12 @@ export function readConfig(env: Record<string, string | undefined> = process.env
     throw new Error("Set ADMIN_TOKEN to a newly generated secret of at least 32 characters.");
   const connector = env.CONNECTOR || "demo";
   if (connector !== "demo" && connector !== "telegram") throw new Error("CONNECTOR must be demo or telegram.");
-  const origins = [...new Set([publicUrl.origin, ...(env.ALLOWED_ORIGINS || "").split(",").filter(Boolean).map(s => {
-    const url = new URL(s.trim());
-    if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || url.origin !== s.trim())
+  const origins = [...new Set([publicUrl.origin, ...(env.ALLOWED_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean).map(s => {
+    const url = new URL(s);
+    if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || url.origin !== s)
       throw new Error("ALLOWED_ORIGINS must contain exact HTTP(S) origins, without paths or wildcards.");
+    if (url.protocol !== "https:" && !loopback(url.hostname))
+      throw new Error("ALLOWED_ORIGINS must use HTTPS (HTTP is allowed for localhost).");
     return url.origin;
   })])];
   const config: Config = {

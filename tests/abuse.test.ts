@@ -5,6 +5,13 @@ import { readConfig } from "../src/config";
 const config = readConfig({ ADMIN_TOKEN: "synthetic-admin-value-at-least-32-characters", PUBLIC_URL: "https://chat.example.com",
   ALLOWED_ORIGINS: "https://site.example.com", TURNSTILE_SITE_KEY: "synthetic-site-key", TURNSTILE_SECRET_KEY: "synthetic-private-key" });
 
+test("configuration rejects plaintext non-local embedding origins", () => {
+  const base = { ADMIN_TOKEN: "synthetic-admin-value-at-least-32-characters", PUBLIC_URL: "https://chat.example.com" };
+  expect(() => readConfig({ ...base, ALLOWED_ORIGINS: "http://site.example.com" })).toThrow("must use HTTPS");
+  expect(readConfig({ ...base, ALLOWED_ORIGINS: "http://localhost:3000,http://127.0.0.1:3001" }).origins)
+    .toEqual(["https://chat.example.com", "http://localhost:3000", "http://127.0.0.1:3001"]);
+});
+
 test("human verification checks the provider result, exact hostname and action", async () => {
   let result = { success: true, hostname: "site.example.com", action: "start_chat" };
   const transport = (async (_url: unknown, init: RequestInit) => {
