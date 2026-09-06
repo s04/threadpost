@@ -128,7 +128,10 @@ function renderEmbedSnippet() {
   if (greeting) attributes.push(["data-greeting", greeting]);
   attributes.push(
     ["data-color", $<HTMLInputElement>("widget-color").value],
-    ["data-position", $<HTMLSelectElement>("widget-position").value]
+    ["data-position", $<HTMLSelectElement>("widget-position").value],
+    ["data-theme", $<HTMLSelectElement>("widget-theme").value],
+    ["data-style", $<HTMLSelectElement>("widget-style").value],
+    ["data-font", $<HTMLSelectElement>("widget-font").value]
   );
   $<HTMLTextAreaElement>("embed-code").value = `<script ${attributes.map(([name, value]) => `${name}="${escapeAttribute(value)}"`).join(" ")} defer></script>`;
   $<HTMLOutputElement>("widget-color-value").value = $<HTMLInputElement>("widget-color").value;
@@ -228,13 +231,13 @@ async function loadApp() {
     const [overview, result] = await Promise.all([api<Overview>("/api/admin/overview"), api<{ conversations: ConversationSummary[] }>("/api/admin/conversations")]);
     state.overview = overview; processIncoming(result.conversations || [], true); state.conversations = result.conversations || [];
     setAuthenticated(true); renderOverview(); renderList(); schedulePoll();
-  } catch (error) {
-    if (error instanceof HttpError && error.status === 401) setAuthenticated(false);
-    else { setAuthenticated(false); handleError(error, $("login-error")); }
     if (initialConversation && /^[a-zA-Z0-9-]{1,80}$/.test(initialConversation)) {
       const id = initialConversation; initialConversation = null;
       await selectConversation(id);
     }
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 401) setAuthenticated(false);
+    else { setAuthenticated(false); handleError(error, $("login-error")); }
   }
 }
 
@@ -507,7 +510,7 @@ $("telegram-form").addEventListener("submit", async (event) => {
   }
   finally { button.disabled = false; if (button.textContent === "Connecting…") button.textContent = "Connect Telegram"; }
 });
-["widget-title", "widget-greeting", "widget-color", "widget-position"].forEach(id => {
+["widget-title", "widget-greeting", "widget-color", "widget-position", "widget-theme", "widget-style", "widget-font"].forEach(id => {
   $(id).addEventListener("input", renderEmbedSnippet);
   $(id).addEventListener("change", renderEmbedSnippet);
 });

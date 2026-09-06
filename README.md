@@ -99,6 +99,14 @@ Add this script to a page whose exact origin is listed in `ALLOWED_ORIGINS`:
 
 Only `data-site` is required. `data-title` sets the launcher and panel title (default: `Chat with us`), `data-greeting` sets the empty-conversation introduction (default: `Send a message and we’ll reply here.`), `data-color` sets the accent when given as an exact six-digit hex color such as `#e4572e`, and `data-position` places the desktop launcher and panel on the `left` or `right` (default: `right`). The mobile panel remains full width. Invalid color and position values fall back to the defaults, and the widget chooses black or white accent text for contrast.
 
+For a closer match to your site, use `data-style="minimal"` for neutral surfaces
+and simpler corners, `data-font="inherit"` to use the website’s font, and
+`data-theme="auto"` to follow its light/dark setting. Auto reads the root
+`data-theme="light|dark"` or `.light`/`.dark` class, then the system preference;
+changes apply without reloading. Explicit `light` and `dark` themes are also
+available. Defaults remain `classic`, `system`, and `light`. These options are
+included in the dashboard’s snippet customizer.
+
 The widget derives the API address from the script URL. Conversation credentials stay in browser storage scoped to the server and site, and are sent only in authorization headers. Custom text is inserted as plain text; the widget does not accept HTML or CSS through these options.
 
 ## Configuration
@@ -312,6 +320,20 @@ The inbox labels this as browser-reported context, not verified visitor identity
 Older conversations may have no recorded source.
 New Telegram topics include the configured site and a shortened, explicitly
 reported page path. Existing topics keep their previous names.
+
+The first visitor message also includes a context summary above its text: the
+configured site, conversation ID and start time, a link to that conversation in
+the admin inbox, and browser-reported name, page, referring origin, language,
+and time zone. Referrer paths, URL queries, fragments, IP addresses, and full
+browser fingerprints are not included. Missing context is shown as unavailable;
+language and time zone do not establish a visitor’s physical location. Context
+is stored at creation, so existing chats may lack these fields. Later messages
+omit the summary. It shares the same provider send as the first message to avoid
+a separate introduction being duplicated or delivered out of order.
+
+Existing D1 installations must apply `cloudflare/migrations/0004-visitor-context.sql`
+once before deploying this version. Fresh databases already contain its columns;
+local SQLite upgrades automatically.
 
 For public deployments, configure both `TURNSTILE_SITE_KEY` and
 `TURNSTILE_SECRET_KEY`, and allow the embedding hosts in the Turnstile dashboard.
