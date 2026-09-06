@@ -69,10 +69,10 @@
     .panel[hidden], .launcher[hidden] { display:none; }
     .head { display:flex; align-items:center; justify-content:space-between; padding:17px 18px; border-bottom:1px solid var(--line); background:var(--ivory); }
     .head-actions { display:flex; align-items:center; gap:4px; }
-    .notify, .delete { padding:6px 8px; border:0; border-radius:7px; background:transparent; color:#625d55; font-size:12px; cursor:pointer; }
+    .notify, .delete { min-height:44px; padding:6px 9px; border:0; border-radius:7px; background:transparent; color:#625d55; font-size:12px; cursor:pointer; }
     .notify:hover, .delete:hover { background:#eee7da; }
     .heading { margin:0; font:750 17px/1.2 ui-serif,Georgia,serif; }
-    .close { width:36px; height:36px; border:0; border-radius:50%; background:transparent; color:var(--ink); font-size:24px; line-height:1; cursor:pointer; }
+    .close { width:44px; height:44px; border:0; border-radius:50%; background:transparent; color:var(--ink); font-size:24px; line-height:1; cursor:pointer; }
     .close:hover { background:#eee7da; }
     .messages { min-height:0; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:12px; overscroll-behavior:contain; }
     .empty { margin:auto 10px; color:#625d55; text-align:center; }
@@ -83,22 +83,22 @@
     .inbound .bubble { border-color:var(--accent-bubble-border); border-radius:14px 14px 4px 14px; background:var(--orange); color:var(--accent-foreground); }
     .meta { margin:4px 4px 0; color:#777168; font-size:11px; }
     .inbound .meta { text-align:right; }
-    .retry { margin:5px 3px 0; padding:2px 0; border:0; border-bottom:1px solid currentColor; background:transparent; color:#a6381b; font-size:12px; cursor:pointer; }
+    .retry { min-height:44px; margin:1px 3px 0; padding:8px 0; border:0; background:transparent; color:#a6381b; font-size:12px; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }
     .composer { padding:14px; border-top:1px solid var(--line); background:var(--ivory); }
     .name { width:100%; margin:0 0 9px; padding:9px 11px; border:1px solid var(--line); border-radius:8px; background:white; color:var(--ink); }
     .compose-row { display:flex; align-items:flex-end; gap:8px; }
     textarea { display:block; min-width:0; width:100%; max-height:120px; resize:none; padding:10px 11px; border:1px solid var(--line); border-radius:10px; background:white; color:var(--ink); line-height:1.35; }
-    .send { flex:0 0 auto; min-height:42px; padding:0 14px; border:1px solid var(--accent-border); border-radius:10px; background:var(--orange); color:var(--accent-foreground); font-weight:700; cursor:pointer; }
+    .send { flex:0 0 auto; min-height:44px; padding:0 14px; border:1px solid var(--accent-border); border-radius:10px; background:var(--orange); color:var(--accent-foreground); font-weight:700; cursor:pointer; }
     .send:disabled { cursor:not-allowed; opacity:.55; }
     .error, .count { margin:7px 2px 0; font-size:12px; }
     .error { color:#a22818; }
-    .config-retry { margin:6px 2px 0; padding:0; border:0; border-bottom:1px solid currentColor; background:transparent; color:#a22818; cursor:pointer; }
+    .config-retry { min-height:44px; margin:2px 2px 0; padding:8px 0; border:0; background:transparent; color:#a22818; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }
     .turnstile { margin:0 0 9px; min-height:0; }
     .count { color:#777168; text-align:right; }
     .closed { padding:15px; border-top:1px solid var(--line); background:var(--ivory); text-align:center; }
     .closed p { margin:0 0 10px; color:#625d55; }
     .blocked p { margin-bottom:0; }
-    .new { padding:9px 13px; border:1px solid var(--ink); border-radius:8px; background:var(--ink); color:white; font-weight:700; cursor:pointer; }
+    .new { min-height:44px; padding:9px 13px; border:1px solid var(--ink); border-radius:8px; background:var(--ink); color:white; font-weight:700; cursor:pointer; }
     .tp[data-position="left"] .launcher { right:auto; left:20px; }
     .tp[data-position="left"] .panel { right:auto; left:20px; }
     @media (max-width:520px) {
@@ -736,6 +736,7 @@
       notifyButton.disabled = permission === "denied";
       notifyButton.textContent = permission === "denied" ? "Notifications blocked" : "Enable notifications";
     }
+    notifyButton.setAttribute("aria-pressed", String(notificationsEnabled));
   }
 
   async function enableNotifications(): Promise<void> {
