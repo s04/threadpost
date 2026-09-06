@@ -14,6 +14,21 @@ export function conversationSource(request: Request, pageUrl: unknown) {
   return { origin, path };
 }
 
+export function browserContext(referrerUrl: unknown, language: unknown, timezone: unknown) {
+  let referrerOrigin: string | null = null;
+  if (typeof referrerUrl === "string" && referrerUrl.length <= 2048) {
+    try {
+      const url = new URL(referrerUrl);
+      if (["http:", "https:"].includes(url.protocol) && !url.username && !url.password) referrerOrigin = url.origin;
+    } catch { /* Invalid optional metadata is discarded. */ }
+  }
+  const browserLanguage = typeof language === "string" && language.length <= 35
+    && /^[A-Za-z]{1,8}(?:-[A-Za-z0-9]{1,8})*$/.test(language) ? language : null;
+  const browserTimezone = typeof timezone === "string" && timezone.length <= 80
+    && /^[A-Za-z0-9_+-]+(?:\/[A-Za-z0-9_+-]+)*$/.test(timezone) ? timezone : null;
+  return { referrerOrigin, browserLanguage, browserTimezone };
+}
+
 export async function verifyHuman(config: Config, token: unknown, origin: string | null, ip: string, transport: typeof fetch = fetch) {
   if (!config.turnstileSecret) return;
   if (typeof token !== "string" || !token || token.length > 2048)

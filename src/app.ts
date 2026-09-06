@@ -3,7 +3,7 @@ import type { Config } from "./config";
 import { Bridge } from "./bridge";
 import { AppError, hash, secret, type Conversation } from "./store";
 import type { TelegramSettings } from "./telegram-settings";
-import { conversationSource, verifyHuman } from "./abuse";
+import { browserContext, conversationSource, verifyHuman } from "./abuse";
 
 const safeEqual = (a: string, b: string) => timingSafeEqual(Buffer.from(hash(a)), Buffer.from(hash(b)));
 const cleanConversation = (row: Conversation) => ({ id: row.id, name: row.name, status: row.status, createdAt: row.createdAt, updatedAt: row.updatedAt,
@@ -164,7 +164,9 @@ export function createApp(config: Config, bridge: Bridge, options: { workspaceBi
             await (options.verifyHuman || verifyHuman)(config, data.turnstileToken, request.headers.get("origin"), ip);
             await quota(`start-day:${ip}`, 20, 86_400_000, "Too many new conversations today. Try again later.");
             await quota("start-day:workspace", config.maxNewConversationsPerDay || 200, 86_400_000, "This inbox has reached its daily conversation limit.");
-            response = json(await store.create((data.name || "").trim(), data.clientToken, conversationSource(request, data.pageUrl)), 201);
+            response = json(await store.create((data.name || "").trim(), data.clientToken, {
+              ...conversationSource(request, data.pageUrl), ...browserContext(data.referrerUrl, data.language, data.timezone),
+            }), 201);
           }
         } else {
           const match = path.match(/^\/api\/conversations\/([a-zA-Z0-9-]+)(\/messages)?$/);

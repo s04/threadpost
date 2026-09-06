@@ -2,10 +2,17 @@ import type { Config } from "./config";
 
 /** A connector owns provider transport; it does not own visitor authentication. */
 export interface ConversationContext { sourcePath?: string | null }
+export interface MessageContext {
+  firstInbound?: boolean;
+  conversation?: {
+    id: string; name: string; createdAt: string; sourceOrigin: string | null; sourcePath: string | null;
+    referrerOrigin?: string | null; browserLanguage?: string | null; browserTimezone?: string | null;
+  };
+}
 export interface Connector {
   kind: string;
   createThread(conversationId: string, context?: ConversationContext): Promise<string>;
-  send(threadId: string, body: string): Promise<void>;
+  send(threadId: string, body: string, context?: MessageContext): Promise<void>;
 }
 
 /** Normalized, already-authenticated provider input. The bridge deduplicates eventId. */
@@ -59,10 +66,32 @@ export class TelegramConnector implements Connector {
     if (!Number.isSafeInteger(result?.message_thread_id)) throw new DeliveryError(true);
     return String(result.message_thread_id);
   }
-  async send(threadId: string, body: string) {
+  async send(threadId: string, body: string, context?: MessageContext) {
+    let text = `Visitor message\n\n${body}`;
+    if (context?.firstInbound && context.conversation) {
+      const clean = (value: string) => value
+        .replace(/[\u0000-\u001f\u007f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, " ")
+        .replace(/\s+/g, " ").trim();
+      const clip = (value: string, length: number) => Array.from(clean(value)).slice(0, length).join("");
+      const conversation = context.conversation;
+      const site = clip(this.config.siteName || this.config.siteId, 120);
+      const name = clip(conversation.name, 120) || "Visitor";
+      const page = conversation.sourceOrigin
+        ? clip(`${conversation.sourceOrigin}${conversation.sourcePath || ""}`, 300)
+        : "Unavailable";
+      const started = clip(conversation.createdAt, 64);
+      const id = clip(conversation.id, 80);
+      const admin = clip(`${this.config.publicUrl}/admin`, 300);
+      text = ["New visitor context", `Site: ${site}`, `Browser-reported name: ${name}`,
+        `Browser-reported page: ${page}`, `Started: ${started}`, `Conversation: ${id}`,
+        `Browser-reported referrer: ${conversation.referrerOrigin ? clip(conversation.referrerOrigin, 300) : "Unavailable"}`,
+        `Browser-reported language: ${conversation.browserLanguage ? clip(conversation.browserLanguage, 35) : "Unavailable"}`,
+        `Browser-reported timezone: ${conversation.browserTimezone ? clip(conversation.browserTimezone, 80) : "Unavailable"}`,
+        `Open admin: ${admin}`, "", "Visitor message", "", body].join("\n");
+    }
     await this.call("sendMessage", {
       chat_id: this.config.telegramChatId, message_thread_id: Number(threadId),
-      text: `Visitor message\n\n${body}`, link_preview_options: { is_disabled: true },
+      text, link_preview_options: { is_disabled: true },
     });
   }
 }

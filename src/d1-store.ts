@@ -1,4 +1,4 @@
-import { AppError, hash, secret, type Conversation, type Message, type Storage } from "./store";
+import { AppError, hash, secret, type Conversation, type ConversationSource, type Message, type Storage } from "./store";
 import { recoveryStatements } from "./schema";
 
 export type D1Value = string | number | null;
@@ -11,7 +11,8 @@ export interface D1Transport { batch(statements: D1Statement[]): Promise<D1Resul
 
 const conversationColumns = `id,name,status,created_at AS createdAt,updated_at AS updatedAt,
  token_hash AS tokenHash,thread_id AS threadId,thread_state AS threadState,expires_at AS expiresAt,
- source_origin AS sourceOrigin,source_path AS sourcePath,blocked`;
+ source_origin AS sourceOrigin,source_path AS sourcePath,blocked,
+ referrer_origin AS referrerOrigin,browser_language AS browserLanguage,browser_timezone AS browserTimezone`;
 const messageColumns = `id,conversation_id AS conversationId,direction,body,created_at AS createdAt,
  delivery_status AS deliveryStatus,client_message_id AS clientMessageId`;
 const conversationRow = (row: (Conversation & Record<string, unknown>) | undefined) => row ? { ...row, blocked: Boolean(row.blocked) } : null;
@@ -60,7 +61,7 @@ export class D1Store implements Storage {
     if (!row) throw new AppError(404, "Conversation not found.");
     return row;
   }
-  async create(name: string, token = secret(), source: { origin: string | null; path: string | null } = { origin: null, path: null }) {
+  async create(name: string, token = secret(), source: ConversationSource = { origin: null, path: null }) {
     const now = new Date().toISOString();
     const [existing] = await this.query<{ id: string; status: string; expiresAt: string }>(
       "SELECT id,status,expires_at AS expiresAt FROM conversations WHERE token_hash=?", [hash(token)]);
@@ -69,8 +70,10 @@ export class D1Store implements Storage {
       return { id: existing.id, token, status: existing.status };
     }
     const id = crypto.randomUUID(), expires = new Date(Date.now() + 30 * 86400_000).toISOString();
-    await this.transport.batch([{ sql: "INSERT INTO conversations (id,name,token_hash,created_at,updated_at,expires_at,source_origin,source_path) VALUES (?,?,?,?,?,?,?,?)",
-      params: [id, name || "Visitor", hash(token), now, now, expires, source.origin, source.path] }]);
+    await this.transport.batch([{ sql: `INSERT INTO conversations (id,name,token_hash,created_at,updated_at,expires_at,source_origin,source_path,
+      referrer_origin,browser_language,browser_timezone) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      params: [id, name || "Visitor", hash(token), now, now, expires, source.origin, source.path,
+        source.referrerOrigin || null, source.browserLanguage || null, source.browserTimezone || null] }]);
     return { id, token, status: "open" };
   }
   async findByToken(token: string) {
@@ -92,6 +95,11 @@ export class D1Store implements Storage {
     return (await this.query<Message & Record<string, unknown>>(
       `SELECT ${messageColumns} FROM messages WHERE conversation_id=? AND direction=? AND client_message_id=?`,
       [conversationId, direction, clientId]))[0] || null;
+  }
+  async firstInboundId(conversationId: string) {
+    const [row] = await this.query<{ id: number | null }>(
+      "SELECT min(id) AS id FROM messages WHERE conversation_id=? AND direction='inbound'", [conversationId]);
+    return row.id == null ? null : Number(row.id);
   }
   async add(id: string, direction: "inbound" | "outbound", body: string, clientId: string) {
     const conversation = await this.require(id);

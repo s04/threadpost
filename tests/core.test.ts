@@ -79,6 +79,27 @@ describe("Store", () => {
 });
 
 describe("Bridge delivery", () => {
+  test("a manually retried first message keeps context while later messages omit it", async () => {
+    const database = store();
+    const conversation = database.create("Reported visitor", undefined, { origin: "https://site.example", path: "/support" });
+    const first = database.add(conversation.id, "inbound", "First", "context-first");
+    database.add(conversation.id, "inbound", "Later", "context-later");
+    const contexts: boolean[] = [];
+    let reject = true;
+    const connector: Connector = { kind: "test", async createThread() { return "123"; }, async send(_id, _body, context) {
+      contexts.push(Boolean(context?.firstInbound));
+      if (reject) { reject = false; throw new DeliveryError(false); }
+    } };
+    const bridge = new Bridge(database, connector);
+
+    await bridge.flush();
+    expect(database.message(first.id)?.deliveryStatus).toBe("failed");
+    await bridge.retry(first.id);
+    await bridge.flush();
+    await bridge.flush();
+    expect(contexts).toEqual([true, true, false]);
+  });
+
   test.each([
     ["failed", new DeliveryError(false)],
     ["unknown", new DeliveryError(true)],

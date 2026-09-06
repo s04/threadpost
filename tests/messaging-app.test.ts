@@ -49,10 +49,12 @@ describe("messaging API", () => {
       body: { siteId: "test", clientToken, pageUrl: `${origin}/pricing?plan=pro#checkout` } });
     expect(missing.status).toBe(403); expect(verification).toHaveLength(1);
     const createdResponse = await call("/api/conversations", { method: "POST", origin,
-      body: { siteId: "test", clientToken, turnstileToken: "human-pass", pageUrl: `${origin}/pricing?plan=pro#checkout` } });
+      body: { siteId: "test", clientToken, turnstileToken: "human-pass", pageUrl: `${origin}/pricing?plan=pro#checkout`,
+        referrerUrl: "https://search.example/results?q=private#result", language: "de-CH", timezone: "Europe/Zurich" } });
     expect(createdResponse.status).toBe(201);
     const created = await createdResponse.json() as { id: string; token: string };
-    expect(store.conversation(created.id)).toMatchObject({ sourceOrigin: origin, sourcePath: "/pricing" });
+    expect(store.conversation(created.id)).toMatchObject({ sourceOrigin: origin, sourcePath: "/pricing",
+      referrerOrigin: "https://search.example", browserLanguage: "de-CH", browserTimezone: "Europe/Zurich" });
     expect(verification).toHaveLength(2);
 
     const retried = await call("/api/conversations", { method: "POST", origin,

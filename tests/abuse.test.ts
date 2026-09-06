@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { verifyHuman } from "../src/abuse";
+import { browserContext, verifyHuman } from "../src/abuse";
 import { readConfig } from "../src/config";
 
 const config = readConfig({ ADMIN_TOKEN: "synthetic-admin-value-at-least-32-characters", PUBLIC_URL: "https://chat.example.com",
@@ -10,6 +10,15 @@ test("configuration rejects plaintext non-local embedding origins", () => {
   expect(() => readConfig({ ...base, ALLOWED_ORIGINS: "http://site.example.com" })).toThrow("must use HTTPS");
   expect(readConfig({ ...base, ALLOWED_ORIGINS: "http://localhost:3000,http://127.0.0.1:3001" }).origins)
     .toEqual(["https://chat.example.com", "http://localhost:3000", "http://127.0.0.1:3001"]);
+});
+
+test("browser context stores only bounded, normalized optional metadata", () => {
+  expect(browserContext("https://search.example/results?q=private#result", "de-CH", "Europe/Zurich")).toEqual({
+    referrerOrigin: "https://search.example", browserLanguage: "de-CH", browserTimezone: "Europe/Zurich",
+  });
+  expect(browserContext("data:text/plain,private", "bad language", "../../invalid")).toEqual({
+    referrerOrigin: null, browserLanguage: null, browserTimezone: null,
+  });
 });
 
 test("human verification checks the provider result, exact hostname and action", async () => {

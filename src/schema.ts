@@ -3,7 +3,8 @@ export const schemaStatements = [
     id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open',
     token_hash TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
     expires_at TEXT NOT NULL, thread_id TEXT UNIQUE, thread_state TEXT NOT NULL DEFAULT 'pending',
-    source_origin TEXT, source_path TEXT, blocked INTEGER NOT NULL DEFAULT 0
+    source_origin TEXT, source_path TEXT, blocked INTEGER NOT NULL DEFAULT 0,
+    referrer_origin TEXT, browser_language TEXT, browser_timezone TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,

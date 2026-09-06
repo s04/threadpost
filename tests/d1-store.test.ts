@@ -41,12 +41,16 @@ describe("D1Store", () => {
   });
   test("persists attribution, blocking, inbound watermarks, and quotas", async () => {
     const { transport, store } = setup(); await store.ready();
-    const conversation = await store.create("Visitor", undefined, { origin: "https://site.example", path: "/contact" });
+    const conversation = await store.create("Visitor", undefined, { origin: "https://site.example", path: "/contact",
+      referrerOrigin: "https://search.example", browserLanguage: "en-GB", browserTimezone: "Europe/London" });
     const inbound = await store.add(conversation.id, "inbound", "hello", "source-message");
+    expect(await store.firstInboundId(conversation.id)).toBe(inbound.id);
     expect((await store.findMessage(conversation.id, "inbound", "source-message"))?.id).toBe(inbound.id);
     expect(await store.findMessage(conversation.id, "outbound", "source-message")).toBeNull();
     expect((await store.list())[0]).toMatchObject({ sourceOrigin: "https://site.example", sourcePath: "/contact", lastInboundId: inbound.id, blocked: false });
     expect((await store.findByToken(conversation.token))?.id).toBe(conversation.id);
+    expect(await store.conversation(conversation.id)).toMatchObject({ referrerOrigin: "https://search.example",
+      browserLanguage: "en-GB", browserTimezone: "Europe/London" });
     expect((await store.setBlocked(conversation.id, true)).blocked).toBe(true);
     await expect(store.add(conversation.id, "inbound", "blocked", "blocked-message")).rejects.toMatchObject({ status: 403 });
     expect(await store.consumeQuota("message:synthetic-hash", 1, 1000, 100)).toBe(true);

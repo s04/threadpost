@@ -30,7 +30,16 @@ export class Bridge {
           }
           // Deletion during a provider request must not send a later message.
           if (!await this.store.conversation(conversation.id)) continue;
-          await this.connector.send(threadId, message.body);
+          const firstInboundId = this.store.firstInboundId
+            ? await this.store.firstInboundId(conversation.id)
+            : (await this.store.messages(conversation.id)).find(row => row.direction === "inbound")?.id ?? null;
+          const firstInbound = firstInboundId === message.id;
+          await this.connector.send(threadId, message.body, { firstInbound, conversation: {
+            id: conversation.id, name: conversation.name, createdAt: conversation.createdAt,
+            sourceOrigin: conversation.sourceOrigin, sourcePath: conversation.sourcePath,
+            referrerOrigin: conversation.referrerOrigin, browserLanguage: conversation.browserLanguage,
+            browserTimezone: conversation.browserTimezone,
+          } });
           await this.store.delivery(message.id, "sent");
         } catch (error) {
           await this.store.delivery(message.id, error instanceof DeliveryError && !error.uncertain ? "failed" : "unknown");

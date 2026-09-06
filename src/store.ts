@@ -11,6 +11,11 @@ export interface Conversation {
   id: string; name: string; status: "open" | "closed"; createdAt: string; updatedAt: string;
   tokenHash: string; threadId: string | null; threadState: string; expiresAt: string;
   sourceOrigin: string | null; sourcePath: string | null; blocked: boolean;
+  referrerOrigin: string | null; browserLanguage: string | null; browserTimezone: string | null;
+}
+export interface ConversationSource {
+  origin: string | null; path: string | null; referrerOrigin?: string | null;
+  browserLanguage?: string | null; browserTimezone?: string | null;
 }
 export interface Message {
   id: number; conversationId: string; direction: "inbound" | "outbound"; body: string;
@@ -24,12 +29,13 @@ export interface Storage {
   bindWorkspace(binding: string): MaybePromise<void>;
   conversation(id: string): MaybePromise<Conversation | null>;
   require(id: string): MaybePromise<Conversation>;
-  create(name: string, token?: string, source?: { origin: string | null; path: string | null }): MaybePromise<{ id: string; token: string; status: string }>;
+  create(name: string, token?: string, source?: ConversationSource): MaybePromise<{ id: string; token: string; status: string }>;
   findByToken(token: string): MaybePromise<Conversation | null>;
   authenticate(id: string, token: string): MaybePromise<Conversation>;
   messages(id: string): MaybePromise<Message[]>;
   message(id: number): MaybePromise<Message | null>;
   findMessage(conversationId: string, direction: "inbound" | "outbound", clientId: string): MaybePromise<Message | null>;
+  firstInboundId?(conversationId: string): MaybePromise<number | null>;
   add(id: string, direction: "inbound" | "outbound", body: string, clientId: string): MaybePromise<Message>;
   list(): MaybePromise<unknown[]>;
   counts(): MaybePromise<{ open: number; closed: number; pending: number; failed: number }>;
@@ -51,7 +57,8 @@ export interface Storage {
 }
 const conversationColumns = `id,name,status,created_at AS createdAt,updated_at AS updatedAt,
  token_hash AS tokenHash,thread_id AS threadId,thread_state AS threadState,expires_at AS expiresAt,
- source_origin AS sourceOrigin,source_path AS sourcePath,blocked`;
+ source_origin AS sourceOrigin,source_path AS sourcePath,blocked,
+ referrer_origin AS referrerOrigin,browser_language AS browserLanguage,browser_timezone AS browserTimezone`;
 const messageColumns = `id,conversation_id AS conversationId,direction,body,created_at AS createdAt,
  delivery_status AS deliveryStatus,client_message_id AS clientMessageId`;
 const conversationRow = (row: Conversation | null) => row ? { ...row, blocked: Boolean(row.blocked) } : null;
@@ -66,6 +73,9 @@ export class Store implements Storage {
     if (!columns.has("source_origin")) this.db.exec("ALTER TABLE conversations ADD COLUMN source_origin TEXT");
     if (!columns.has("source_path")) this.db.exec("ALTER TABLE conversations ADD COLUMN source_path TEXT");
     if (!columns.has("blocked")) this.db.exec("ALTER TABLE conversations ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0");
+    if (!columns.has("referrer_origin")) this.db.exec("ALTER TABLE conversations ADD COLUMN referrer_origin TEXT");
+    if (!columns.has("browser_language")) this.db.exec("ALTER TABLE conversations ADD COLUMN browser_language TEXT");
+    if (!columns.has("browser_timezone")) this.db.exec("ALTER TABLE conversations ADD COLUMN browser_timezone TEXT");
     // A crash after submitting a request cannot prove that it was not delivered.
     this.db.exec(recoveryStatements.join(";"));
     // Conversation content and session hashes must not inherit a permissive process umask.
@@ -95,7 +105,7 @@ export class Store implements Storage {
     return conversationRow(this.db.query(`SELECT ${conversationColumns} FROM conversations WHERE id=?`).get(id) as Conversation | null);
   }
   require(id: string) { const row = this.conversation(id); if (!row) throw new AppError(404, "Conversation not found."); return row; }
-  create(name: string, token = secret(), source: { origin: string | null; path: string | null } = { origin: null, path: null }) {
+  create(name: string, token = secret(), source: ConversationSource = { origin: null, path: null }) {
     const now = new Date().toISOString();
     const existing = this.db.query("SELECT id,status,expires_at AS expiresAt FROM conversations WHERE token_hash=?").get(hash(token)) as { id: string; status: string; expiresAt: string } | null;
     if (existing) {
@@ -104,8 +114,10 @@ export class Store implements Storage {
     }
     const id = crypto.randomUUID();
     const expires = new Date(Date.now() + 30 * 86400_000).toISOString();
-    this.db.query("INSERT INTO conversations (id,name,token_hash,created_at,updated_at,expires_at,source_origin,source_path) VALUES (?,?,?,?,?,?,?,?)")
-      .run(id, name || "Visitor", hash(token), now, now, expires, source.origin, source.path);
+    this.db.query(`INSERT INTO conversations (id,name,token_hash,created_at,updated_at,expires_at,source_origin,source_path,
+      referrer_origin,browser_language,browser_timezone) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(id, name || "Visitor", hash(token), now, now, expires, source.origin, source.path,
+        source.referrerOrigin || null, source.browserLanguage || null, source.browserTimezone || null);
     return { id, token, status: "open" };
   }
   findByToken(token: string) {
@@ -126,6 +138,10 @@ export class Store implements Storage {
   findMessage(conversationId: string, direction: "inbound" | "outbound", clientId: string) {
     return this.db.query(`SELECT ${messageColumns} FROM messages WHERE conversation_id=? AND direction=? AND client_message_id=?`)
       .get(conversationId, direction, clientId) as Message | null;
+  }
+  firstInboundId(conversationId: string) {
+    const row = this.db.query("SELECT min(id) AS id FROM messages WHERE conversation_id=? AND direction='inbound'").get(conversationId) as { id: number | null };
+    return row.id;
   }
   add(id: string, direction: "inbound" | "outbound", body: string, clientId: string): Message {
     return this.db.transaction(() => {
