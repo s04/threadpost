@@ -145,18 +145,18 @@ describe("Telegram webhook updates", () => {
     ["wrong operator", { from: { id: 99, is_bot: false } }],
     ["bot sender", { from: { id: 42, is_bot: true } }],
     ["command", { text: "/close" }],
-  ])("ignores %s messages", (_label, overrides) => {
+  ])("ignores %s messages", async (_label, overrides) => {
     const { database, conversation, bridge } = fixture();
-    bridge.telegram(update(overrides), config);
+    await bridge.telegram(update(overrides), config);
     expect(database.messages(conversation.id)).toHaveLength(0);
   });
 
-  test("processes a duplicate update exactly once", () => {
+  test("processes a duplicate update exactly once", async () => {
     const { database, conversation, bridge } = fixture();
     const incoming = update();
 
-    bridge.telegram(incoming, config);
-    bridge.telegram(incoming, config);
+    await bridge.telegram(incoming, config);
+    await bridge.telegram(incoming, config);
 
     const messages = database.messages(conversation.id);
     expect(messages).toHaveLength(1);

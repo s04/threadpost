@@ -39,10 +39,12 @@ connector so old conversation threads cannot be routed to a different inbox.
 Add this script to a page whose exact origin is listed in `ALLOWED_ORIGINS`:
 
 ```html
-<script src="https://support.example.com/widget.js" data-site="demo" data-title="Chat with us" defer></script>
+<script src="https://support.example.com/widget.js" data-site="demo" data-title="Chat with us" data-greeting="How can we help?" data-color="#e4572e" data-position="right" defer></script>
 ```
 
-`data-title` is optional. The widget derives the API address from the script URL. Conversation credentials stay in browser storage scoped to the server and site, and are sent only in authorization headers.
+Only `data-site` is required. `data-title` sets the launcher and panel title (default: `Chat with us`), `data-greeting` sets the empty-conversation introduction (default: `Send a message and we’ll reply here.`), `data-color` sets the accent when given as an exact six-digit hex color such as `#e4572e`, and `data-position` places the desktop launcher and panel on the `left` or `right` (default: `right`). The mobile panel remains full width. Invalid color and position values fall back to the defaults, and the widget chooses black or white accent text for contrast.
+
+The widget derives the API address from the script URL. Conversation credentials stay in browser storage scoped to the server and site, and are sent only in authorization headers. Custom text is inserted as plain text; the widget does not accept HTML or CSS through these options.
 
 ## Configuration
 
@@ -76,9 +78,73 @@ Compose publishes the service only on `127.0.0.1:8788` and stores SQLite data in
 
 Back up the volume regularly. For a consistent backup, stop the container before copying the SQLite database.
 
+## Cloudflare Containers and D1
+
+The optional Cloudflare adapter runs the Bun server in a Container and stores
+conversation data in D1. Install the existing development dependencies, then
+keep the deployment-specific Wrangler configuration outside version control:
+
+```sh
+mkdir -p .deploy
+cp cloudflare/wrangler.example.jsonc .deploy/wrangler.jsonc
+```
+
+In `.deploy/wrangler.jsonc`, change `main` to
+`../cloudflare/worker.ts`. Keep the existing `../Dockerfile` image and
+`../public` assets paths, replace the D1 database ID, and set `PUBLIC_URL`,
+`SITE_ID`, `SITE_NAME`, and the exact `ALLOWED_ORIGINS` for your deployment.
+Use your Worker URL as `PUBLIC_URL`, or configure a Worker custom domain and
+use that origin. The checked-in example contains placeholders only. The alternative
+`cloudflare/wrangler.jsonc` location is also ignored, but `.deploy` keeps all
+local deployment material together.
+
+Create the database, generate the reusable schema, and apply it:
+
+```sh
+bunx wrangler d1 create threadpost
+bun -e 'import { schemaStatements } from "./src/schema.ts"; console.log(schemaStatements.map(sql => sql + ";").join("\n"))' > .deploy/schema.sql
+bunx wrangler d1 execute threadpost --remote --file .deploy/schema.sql --config .deploy/wrangler.jsonc
+```
+
+Copy the database ID returned by the create command into the ignored config.
+Set separate random values of at least 32 characters for the private admin and
+container transport secrets. Use `wrangler secret put` for each value, or
+`wrangler secret bulk` with a private ignored input file:
+
+```sh
+bunx wrangler secret put ADMIN_TOKEN --config .deploy/wrangler.jsonc
+bunx wrangler secret put INTERNAL_TOKEN --config .deploy/wrangler.jsonc
+bun run build
+bunx wrangler deploy --config .deploy/wrangler.jsonc
+```
+
+The example limits the deployment to one Container instance. Its Durable
+Object serializes requests for the workspace, while D1 keeps conversations and
+messages when the Container sleeps. The Container sleeps after two idle
+minutes, so the next request can incur a cold start. Admin sessions remain in
+process memory and require another login after a restart or sleep.
+
+The adapter starts with the `demo` connector. Open **Settings → Telegram** in
+the admin panel to connect a bot and private forum group. The form verifies the
+bot and its topic-management permission, then registers the webhook. Existing
+demo history stays in the inbox; only new messages are forwarded after connecting.
+Bot settings are encrypted in D1 using a key derived from `INTERNAL_TOKEN`.
+Keep that secret stable and backed up; changing it requires recovering the old
+key to read the saved settings. Local installations use `SETTINGS_KEY`, falling
+back to `ADMIN_TOKEN`. The Worker owns the D1 binding and exposes an authenticated
+database transport to the Container; account API credentials stay outside it.
+
 ## Telegram connector
 
 Telegram setup is an explicit operator action:
+
+The admin panel's **Settings → Telegram** form can perform setup without
+changing container configuration. Provide the bot token, group ID, and allowed
+operator IDs. The token is never returned to the browser after saving. A bot
+already registered at another webhook is rejected; an established inbox cannot
+be moved to a different bot/group through this form.
+
+Alternatively, configure the connector through environment variables:
 
 1. Create a bot with BotFather and keep its token private.
 2. Create a private supergroup, enable forum topics, and add the bot as an administrator with permission to manage topics and messages.
@@ -121,16 +187,16 @@ not depend on Bun.
 import { Bridge, Store } from "threadpost";
 import type { Connector } from "threadpost/connectors";
 
-function connect(adapter: Connector) {
+async function connect(adapter: Connector) {
   const store = new Store("data/custom-inbox.sqlite");
-  store.bindWorkspace(`my-app:${adapter.kind}`);
+  await store.bindWorkspace(`my-app:${adapter.kind}`);
   const bridge = new Bridge(store, adapter);
   // Schedule bridge.flush() in the host service to drain the durable outbox.
   return bridge;
 }
 ```
 
-An inbound adapter calls `bridge.receive({ eventId, threadId, body })` **after**
+An inbound adapter calls `await bridge.receive({ eventId, threadId, body })` **after**
 validating its provider signature, destination workspace and operator identity.
 The bridge deduplicates provider events and routes the reply to the stored
 conversation. An unknown external-send outcome must throw `DeliveryError(true)`;

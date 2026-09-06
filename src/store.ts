@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { recoveryStatements, schemaStatements } from "./schema";
 
 export const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 export const secret = () => randomBytes(32).toString("base64url");
@@ -15,42 +16,47 @@ export interface Message {
   createdAt: string; deliveryStatus: "pending" | "sending" | "sent" | "failed" | "unknown";
   clientMessageId: string;
 }
+export type MaybePromise<T> = T | Promise<T>;
+export interface Storage {
+  ready(): MaybePromise<void>;
+  close(): MaybePromise<void>;
+  bindWorkspace(binding: string): MaybePromise<void>;
+  conversation(id: string): MaybePromise<Conversation | null>;
+  require(id: string): MaybePromise<Conversation>;
+  create(name: string, token?: string): MaybePromise<{ id: string; token: string; status: string }>;
+  authenticate(id: string, token: string): MaybePromise<Conversation>;
+  messages(id: string): MaybePromise<Message[]>;
+  message(id: number): MaybePromise<Message | null>;
+  add(id: string, direction: "inbound" | "outbound", body: string, clientId: string): MaybePromise<Message>;
+  list(): MaybePromise<unknown[]>;
+  counts(): MaybePromise<{ open: number; closed: number; pending: number; failed: number }>;
+  setStatus(id: string, status: string): MaybePromise<Conversation>;
+  pending(): MaybePromise<Message[]>;
+  delivery(id: number, status: string): MaybePromise<void>;
+  thread(id: string, state: string, threadId?: string | null): MaybePromise<void>;
+  delete(id: string): MaybePromise<void>;
+  receiveReply(connector: string, eventId: string, threadId: string, body: string): MaybePromise<boolean>;
+  getSetting(key: string): MaybePromise<string | null>;
+  setSetting(key: string, value: string): MaybePromise<void>;
+  resetThreads(): MaybePromise<void>;
+  saveTelegramSettings(value: string, resetThreads: boolean): MaybePromise<void>;
+}
 const conversationColumns = `id,name,status,created_at AS createdAt,updated_at AS updatedAt,
  token_hash AS tokenHash,thread_id AS threadId,thread_state AS threadState,expires_at AS expiresAt`;
 const messageColumns = `id,conversation_id AS conversationId,direction,body,created_at AS createdAt,
  delivery_status AS deliveryStatus,client_message_id AS clientMessageId`;
 
-export class Store {
+export class Store implements Storage {
   db: Database;
   constructor(path: string) {
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     this.db = new Database(path, { create: true, strict: true });
-    this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
-      CREATE TABLE IF NOT EXISTS conversations (
-        id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open',
-        token_hash TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-        expires_at TEXT NOT NULL, thread_id TEXT UNIQUE, thread_state TEXT NOT NULL DEFAULT 'pending'
-      );
-      CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-        direction TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL,
-        client_message_id TEXT NOT NULL, delivery_status TEXT NOT NULL,
-        UNIQUE(conversation_id,direction,client_message_id)
-      );
-      CREATE INDEX IF NOT EXISTS messages_outbox ON messages(delivery_status,id);
-      CREATE UNIQUE INDEX IF NOT EXISTS conversation_tokens ON conversations(token_hash);
-      CREATE TABLE IF NOT EXISTS telegram_updates (id INTEGER PRIMARY KEY, created_at TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS connector_events (
-        connector TEXT NOT NULL, event_id TEXT NOT NULL, created_at TEXT NOT NULL,
-        PRIMARY KEY(connector,event_id)
-      );
-      INSERT OR IGNORE INTO connector_events (connector,event_id,created_at)
-        SELECT 'telegram',cast(id AS TEXT),created_at FROM telegram_updates;
-      CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-    `);
+    this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; ${schemaStatements.join(";")}`);
     // A crash after submitting a request cannot prove that it was not delivered.
-    this.db.exec("UPDATE messages SET delivery_status='unknown' WHERE delivery_status='sending'; UPDATE conversations SET thread_state='unknown' WHERE thread_state='sending'");
+    this.db.exec(recoveryStatements.join(";"));
   }
+  ready() {}
+  close() { this.db.close(); }
   bindWorkspace(binding: string) {
     const existing = this.db.query("SELECT value FROM settings WHERE key='workspace'").get() as { value: string } | null;
     if (existing && existing.value !== binding)
@@ -132,4 +138,29 @@ export class Store {
     this.db.query("UPDATE conversations SET thread_state=?,thread_id=coalesce(?,thread_id) WHERE id=?").run(state, threadId, id);
   }
   delete(id: string) { this.require(id); this.db.query("DELETE FROM conversations WHERE id=?").run(id); }
+  receiveReply(connector: string, eventId: string, threadId: string, body: string) {
+    return this.db.transaction(() => {
+      if (this.db.query("SELECT event_id FROM connector_events WHERE connector=? AND event_id=?").get(connector, eventId)) return false;
+      const row = this.db.query("SELECT id FROM conversations WHERE thread_id=?").get(threadId) as { id: string } | null;
+      if (!row) return false;
+      this.setStatus(row.id, "open");
+      this.add(row.id, "outbound", body, `provider-${connector}-${eventId}`);
+      this.db.query("INSERT INTO connector_events (connector,event_id,created_at) VALUES (?,?,?)")
+        .run(connector, eventId, new Date().toISOString());
+      return true;
+    })();
+  }
+  getSetting(key: string) {
+    return (this.db.query("SELECT value FROM settings WHERE key=?").get(key) as { value: string } | null)?.value || null;
+  }
+  setSetting(key: string, value: string) {
+    this.db.query("INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(key, value);
+  }
+  resetThreads() { this.db.query("UPDATE conversations SET thread_id=NULL,thread_state='pending'").run(); }
+  saveTelegramSettings(value: string, resetThreads: boolean) {
+    this.db.transaction(() => {
+      this.setSetting("telegram_config", value);
+      if (resetThreads) this.resetThreads();
+    })();
+  }
 }

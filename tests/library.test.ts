@@ -15,9 +15,9 @@ test("a custom connector sends and receives through the public library entry poi
     await bridge.flush();
     expect(deliveries).toEqual(["Question"]);
     const reply: OperatorReply = { eventId: "provider-event-1", threadId: `custom:${conversation.id}`, body: "Answer" };
-    expect(bridge.receive(reply)).toBe(true);
-    expect(bridge.receive(reply)).toBe(false);
-    expect(bridge.receive({ ...reply, eventId: "other", threadId: "unmapped-thread" })).toBe(false);
+    expect(await bridge.receive(reply)).toBe(true);
+    expect(await bridge.receive(reply)).toBe(false);
+    expect(await bridge.receive({ ...reply, eventId: "other", threadId: "unmapped-thread" })).toBe(false);
     expect(store.messages(conversation.id).map(message => message.body)).toEqual(["Question", "Answer"]);
   } finally { store.db.close(); }
 });

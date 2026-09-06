@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { Config } from "./config";
 import { Bridge } from "./bridge";
 import { AppError, hash, secret, type Conversation } from "./store";
+import type { TelegramSettings } from "./telegram-settings";
 
 const safeEqual = (a: string, b: string) => timingSafeEqual(Buffer.from(hash(a)), Buffer.from(hash(b)));
 const cleanConversation = (row: Conversation) => ({ id: row.id, name: row.name, status: row.status, createdAt: row.createdAt, updatedAt: row.updatedAt });
@@ -50,9 +51,11 @@ function messageInput(data: Record<string, any>) {
   return { text: data.body.trim(), clientId: data.clientMessageId };
 }
 
-export function createApp(config: Config, bridge: Bridge) {
+export function createApp(config: Config, bridge: Bridge, options: { workspaceBinding?: string; telegram?: TelegramSettings } = {}) {
   const store = bridge.store, limiter = new RateLimit();
-  store.bindWorkspace(`${config.siteId}:${config.connector}:${config.telegramChatId}:${config.telegramToken.split(":")[0]}`);
+  const ready = Promise.resolve().then(() => store.bindWorkspace(
+    options.workspaceBinding || `${config.siteId}:${config.connector}:${config.telegramChatId}:${config.telegramToken.split(":")[0]}`
+  )).then(() => null, error => error);
   const sessions = new Map<string, number>();
   const cookie = (token: string, age: number) => `threadpost_session=${token}; HttpOnly; SameSite=Strict; Path=/api/admin; Max-Age=${age}${config.publicUrl.startsWith("https:") ? "; Secure" : ""}`;
   const sessionKey = (request: Request) => hash(request.headers.get("cookie")?.match(/(?:^|;\s*)threadpost_session=([^;]+)/)?.[1] || "");
@@ -64,6 +67,8 @@ export function createApp(config: Config, bridge: Bridge) {
       throw new AppError(403, "Operator requests must come from this site's origin.");
   }
   return async (request: Request, ip = "local"): Promise<Response> => {
+    const startupError = await ready;
+    if (startupError) throw startupError;
     const url = new URL(request.url), path = url.pathname;
     let response: Response;
     try {
@@ -71,7 +76,7 @@ export function createApp(config: Config, bridge: Bridge) {
       else if (path === "/webhooks/telegram" && request.method === "POST") {
         if (config.connector !== "telegram" || !safeEqual(request.headers.get("x-telegram-bot-api-secret-token") || "", config.webhookSecret))
           throw new AppError(401, "Invalid webhook signature.");
-        bridge.telegram(await body(request), config); response = json({ ok: true });
+        await bridge.telegram(await body(request), config); response = json({ ok: true });
       } else if (path === "/api/admin/login" && request.method === "POST") {
         if (request.headers.get("origin") !== config.publicUrl) throw new AppError(403, "Invalid origin.");
         if (!limiter.allow(`login:${ip}`, 10)) throw new AppError(429, "Too many attempts. Try again in a minute.");
@@ -85,27 +90,37 @@ export function createApp(config: Config, bridge: Bridge) {
         admin(request);
         if (path === "/api/admin/logout" && request.method === "POST") {
           sessions.delete(sessionKey(request)); response = json({ ok: true }); response.headers.set("Set-Cookie", cookie("", 0));
+        } else if (path === "/api/admin/telegram") {
+          if (!options.telegram) throw new AppError(503, "Telegram setup is unavailable in this host.");
+          if (request.method === "GET") response = json(await options.telegram.status());
+          else if (request.method === "POST") {
+            const data = await body(request);
+            if (typeof data.botToken !== "string" || typeof data.chatId !== "string"
+              || !Array.isArray(data.operatorIds) || data.operatorIds.some((id: unknown) => typeof id !== "string"))
+              throw new AppError(400, "Enter the bot token, group ID and operator IDs.");
+            response = json(await options.telegram.connect({ botToken: data.botToken, chatId: data.chatId, operatorIds: data.operatorIds }));
+          } else throw new AppError(405, "Method not allowed.");
         } else if (path === "/api/admin/overview" && request.method === "GET") {
           response = json({ site: { id: config.siteId, name: config.siteName, origins: config.origins },
-            connector: { kind: config.connector, configured: config.connector === "telegram" }, counts: store.counts(),
+            connector: { kind: config.connector, configured: config.connector === "telegram" }, counts: await store.counts(),
             embedScript: `<script src="${config.publicUrl}/widget.js" data-site="${config.siteId}" defer></script>` });
-        } else if (path === "/api/admin/conversations" && request.method === "GET") response = json({ conversations: store.list() });
+        } else if (path === "/api/admin/conversations" && request.method === "GET") response = json({ conversations: await store.list() });
         else {
           const conversation = path.match(/^\/api\/admin\/conversations\/([a-zA-Z0-9-]+)(\/messages)?$/);
           const retry = path.match(/^\/api\/admin\/messages\/(\d+)\/retry$/);
-          if (retry && request.method === "POST") response = json(bridge.retry(Number(retry[1])));
+          if (retry && request.method === "POST") response = json(await bridge.retry(Number(retry[1])));
           else if (conversation) {
-            const id = conversation[1]; store.require(id);
-            if (request.method === "GET" && !conversation[2]) response = json({ conversation: cleanConversation(store.require(id)), messages: store.messages(id) });
+            const id = conversation[1]; await store.require(id);
+            if (request.method === "GET" && !conversation[2]) response = json({ conversation: cleanConversation(await store.require(id)), messages: await store.messages(id) });
             else if (request.method === "POST" && conversation[2]) {
-              const input = messageInput(await body(request)); response = json(store.add(id, "outbound", input.text, input.clientId));
+              const input = messageInput(await body(request)); response = json(await store.add(id, "outbound", input.text, input.clientId));
             } else if (request.method === "PATCH" && !conversation[2]) {
               const data = await body(request);
               if (!["open", "closed"].includes(data.status)) throw new AppError(400, "Invalid conversation status.");
-              response = json(cleanConversation(store.setStatus(id, data.status)));
+              response = json(cleanConversation(await store.setStatus(id, data.status)));
             } else if (request.method === "DELETE" && !conversation[2]) {
               if (bridge.busy) throw new AppError(409, "Delivery is in progress. Try deletion again shortly.");
-              store.delete(id); response = json({ ok: true });
+              await store.delete(id); response = json({ ok: true });
             } else throw new AppError(405, "Method not allowed.");
           } else throw new AppError(404, "Not found.");
         }
@@ -119,15 +134,15 @@ export function createApp(config: Config, bridge: Bridge) {
           if (data.name != null && (typeof data.name !== "string" || data.name.length > 80)) throw new AppError(400, "Name must be at most 80 characters.");
           if (data.clientToken != null && (typeof data.clientToken !== "string" || !/^[a-zA-Z0-9_-]{43}$/.test(data.clientToken)))
             throw new AppError(400, "clientToken must be a random 32-byte base64url secret.");
-          response = json(store.create((data.name || "").trim(), data.clientToken), 201);
+          response = json(await store.create((data.name || "").trim(), data.clientToken), 201);
         } else {
           const match = path.match(/^\/api\/conversations\/([a-zA-Z0-9-]+)\/messages$/);
           if (!match) throw new AppError(404, "Not found.");
-          const row = store.authenticate(match[1], request.headers.get("authorization")?.replace(/^Bearer /, "") || "");
-          if (request.method === "GET") response = json({ conversation: cleanConversation(row), messages: store.messages(row.id) });
+          const row = await store.authenticate(match[1], request.headers.get("authorization")?.replace(/^Bearer /, "") || "");
+          if (request.method === "GET") response = json({ conversation: cleanConversation(row), messages: await store.messages(row.id) });
           else if (request.method === "POST") {
             if (!limiter.allow(`message:${row.id}`, 30)) throw new AppError(429, "Too many messages. Try again in a minute.");
-            const input = messageInput(await body(request)); response = json(store.add(row.id, "inbound", input.text, input.clientId), 201);
+            const input = messageInput(await body(request)); response = json(await store.add(row.id, "inbound", input.text, input.clientId), 201);
           } else throw new AppError(405, "Method not allowed.");
         }
       } else if (request.method === "GET" && publicFiles[path]) {

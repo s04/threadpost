@@ -12,6 +12,7 @@ interface Overview {
   counts: { open: number; closed: number; pending: number; failed: number };
   embedScript: string;
 }
+interface TelegramConnection { connected: boolean; botUsername?: string; chatId?: string; operatorIds?: string[]; }
 interface AppState {
   overview: Overview | null; conversations: ConversationSummary[]; selectedId: string | null;
   conversation: Thread | null; loading: boolean; threadRequest: number; replyId: string | null; replyBody: string | null;
@@ -26,6 +27,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
 const state: AppState = { overview: null, conversations: [], selectedId: null, conversation: null, loading: false, threadRequest: 0, replyId: null, replyBody: null };
 const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 const shortTime = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+let snippetInitialized = false;
 
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
@@ -43,9 +45,9 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
 function setAuthenticated(authenticated: boolean) {
   $("login-view").hidden = authenticated;
   $("admin-view").hidden = !authenticated;
+  if (authenticated) $<HTMLInputElement>("token").value = "";
   if (!authenticated) {
     state.overview = null; state.conversations = []; state.selectedId = null; state.conversation = null;
-    $<HTMLInputElement>("token").value = "";
     setTimeout(() => $<HTMLInputElement>("token").focus(), 0);
   }
 }
@@ -70,6 +72,60 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, te
 }
 function displayName(conversation: Conversation) { return conversation.name?.trim() || "Anonymous visitor"; }
 function formatDate(value: string) { const date = new Date(value); return Number.isNaN(date.valueOf()) ? "" : dateTime.format(date); }
+function escapeAttribute(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function renderEmbedSnippet() {
+  if (!state.overview) return;
+  const parsed = new DOMParser().parseFromString(state.overview.embedScript, "text/html").querySelector("script");
+  if (!parsed?.src || !parsed.dataset.site) return;
+  const attributes: Array<[string, string]> = [
+    ["src", parsed.src],
+    ["data-site", parsed.dataset.site],
+  ];
+  const title = $<HTMLInputElement>("widget-title").value.trim();
+  const greeting = $<HTMLInputElement>("widget-greeting").value.trim();
+  if (title) attributes.push(["data-title", title]);
+  if (greeting) attributes.push(["data-greeting", greeting]);
+  attributes.push(
+    ["data-color", $<HTMLInputElement>("widget-color").value],
+    ["data-position", $<HTMLSelectElement>("widget-position").value]
+  );
+  $<HTMLTextAreaElement>("embed-code").value = `<script ${attributes.map(([name, value]) => `${name}="${escapeAttribute(value)}"`).join(" ")} defer></script>`;
+  $<HTMLOutputElement>("widget-color-value").value = $<HTMLInputElement>("widget-color").value;
+  show($("copy-status"), "");
+}
+
+function initializeSnippet() {
+  if (!state.overview || snippetInitialized) return;
+  const parsed = new DOMParser().parseFromString(state.overview.embedScript, "text/html").querySelector("script");
+  $<HTMLInputElement>("widget-title").value = parsed?.dataset.title || "";
+  $<HTMLInputElement>("widget-greeting").value = parsed?.dataset.greeting || "";
+  snippetInitialized = true;
+  renderEmbedSnippet();
+}
+
+function renderTelegram(connection: TelegramConnection) {
+  const badge = $("telegram-badge");
+  badge.textContent = connection.connected ? "Connected" : "Not connected";
+  badge.classList.toggle("connected", connection.connected);
+  if (connection.connected) {
+    const bot = connection.botUsername ? `@${connection.botUsername.replace(/^@/, "")}` : "Telegram bot";
+    show($("telegram-status"), `${bot} is connected to group ${connection.chatId || "configured"}. ${connection.operatorIds?.length || 0} operator${connection.operatorIds?.length === 1 ? "" : "s"} allowed.`);
+    $<HTMLButtonElement>("telegram-submit").textContent = "Update connection";
+  } else {
+    show($("telegram-status"), "No Telegram bot is connected. Complete the fields below when your private forum is ready.");
+    $<HTMLButtonElement>("telegram-submit").textContent = "Connect Telegram";
+  }
+  if (connection.chatId) $<HTMLInputElement>("telegram-chat-id").value = connection.chatId;
+  if (connection.operatorIds?.length) $<HTMLInputElement>("telegram-operator-ids").value = connection.operatorIds.join(", ");
+}
+
+async function loadTelegram() {
+  try { renderTelegram(await api<TelegramConnection>("/api/admin/telegram")); }
+  catch (error) { handleError(error, $("telegram-status")); }
+}
 
 async function loadApp() {
   try {
@@ -84,9 +140,9 @@ async function loadApp() {
 
 function renderOverview() {
   if (!state.overview) return;
-  const { site, connector, counts, embedScript } = state.overview;
+  const { site, connector, counts } = state.overview;
   $("site-name").textContent = site.name;
-  $<HTMLTextAreaElement>("embed-code").value = embedScript;
+  initializeSnippet();
   const countItems: Array<[string, number]> = [["Open", counts.open], ["Closed", counts.closed], ["Pending", counts.pending], ["Needs attention", counts.failed]];
   clear($("counts"));
   countItems.forEach(([label, count]) => {
@@ -252,7 +308,30 @@ $("reply-form").addEventListener("submit", (event) => void submitReply(event as 
 $("status-button").addEventListener("click", toggleStatus);
 $("delete-button").addEventListener("click", confirmDelete);
 $("back-button").addEventListener("click", () => { document.body.classList.remove("thread-open"); if (state.selectedId) $("conversation-list").querySelector<HTMLElement>(`[data-id="${CSS.escape(state.selectedId)}"]`)?.focus(); });
-$("settings-button").addEventListener("click", () => $<HTMLDialogElement>("settings-dialog").showModal());
+$("settings-button").addEventListener("click", () => {
+  $<HTMLDialogElement>("settings-dialog").showModal();
+  void loadTelegram();
+});
+$("settings-close").addEventListener("click", () => $<HTMLDialogElement>("settings-dialog").close());
+$("telegram-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = $<HTMLButtonElement>("telegram-submit");
+  const token = $<HTMLInputElement>("telegram-token");
+  const operatorIds = $<HTMLInputElement>("telegram-operator-ids").value.split(/[\s,]+/).map(value => value.trim()).filter(Boolean);
+  button.disabled = true; show($("telegram-error"), "");
+  try {
+    const connection = await api<TelegramConnection>("/api/admin/telegram", { method: "POST", body: JSON.stringify({
+      botToken: token.value, chatId: $<HTMLInputElement>("telegram-chat-id").value.trim(), operatorIds,
+    }) });
+    token.value = "";
+    renderTelegram(connection);
+  } catch (error) { handleError(error, $("telegram-error")); }
+  finally { button.disabled = false; }
+});
+["widget-title", "widget-greeting", "widget-color", "widget-position"].forEach(id => {
+  $(id).addEventListener("input", renderEmbedSnippet);
+  $(id).addEventListener("change", renderEmbedSnippet);
+});
 $("copy-button").addEventListener("click", async () => {
   const embed = $<HTMLTextAreaElement>("embed-code");
   try { await navigator.clipboard.writeText(embed.value); show($("copy-status"), "Copied"); }

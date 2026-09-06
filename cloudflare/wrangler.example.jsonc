@@ -1,0 +1,16 @@
+{
+  "name": "threadpost",
+  "main": "./worker.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "containers": [{ "class_name": "ChatContainer", "image": "../Dockerfile", "max_instances": 1, "instance_type": "lite" }],
+  "durable_objects": { "bindings": [{ "name": "CHAT", "class_name": "ChatContainer" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ChatContainer"] }],
+  "d1_databases": [{ "binding": "DB", "database_name": "threadpost", "database_id": "REPLACE_WITH_D1_DATABASE_ID" }],
+  "assets": { "directory": "../public", "binding": "ASSETS", "run_worker_first": true },
+  "vars": {
+    "PUBLIC_URL": "https://chat.example.com", "SITE_ID": "demo", "SITE_NAME": "Demo site",
+    "ALLOWED_ORIGINS": "https://example.com"
+  }
+}

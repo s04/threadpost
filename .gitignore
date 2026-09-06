@@ -10,3 +10,6 @@ test-results/
 .DS_Store
 public/admin.js
 public/widget.js
+.deploy/
+cloudflare/wrangler.jsonc
+.wrangler/

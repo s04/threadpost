@@ -36,7 +36,7 @@ test("an uncertain earlier send holds later messages until explicitly retried", 
     await bridge.flush(); await bridge.flush();
     expect(delivered).toEqual([]);
     expect(store.messages(conversation.id).map(m => m.deliveryStatus)).toEqual(["unknown", "pending"]);
-    fail = false; bridge.retry(first.id); await bridge.flush(); await bridge.flush();
+    fail = false; await bridge.retry(first.id); await bridge.flush(); await bridge.flush();
     expect(delivered).toEqual(["first", "second"]);
   } finally { store.db.close(); }
 });

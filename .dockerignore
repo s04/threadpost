@@ -14,3 +14,5 @@ README.md
 CONTRIBUTING.md
 SECURITY.md
 LICENSE
+.deploy
+.wrangler

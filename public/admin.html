@@ -74,14 +74,46 @@
       </main>
     </div>
 
-    <dialog id="settings-dialog" class="dialog">
-      <form method="dialog" class="dialog-card">
-        <div class="dialog-heading"><div><p class="eyebrow">Installation</p><h2>Settings</h2></div><button class="dialog-close" value="cancel" aria-label="Close settings">×</button></div>
+    <dialog id="settings-dialog" class="dialog settings-dialog">
+      <div class="dialog-card">
+        <div class="dialog-heading"><div><p class="eyebrow">Installation</p><h2>Settings</h2></div><button id="settings-close" class="dialog-close" type="button" aria-label="Close settings">×</button></div>
         <dl id="site-details" class="details"></dl>
+        <section class="settings-section" aria-labelledby="telegram-title">
+          <div class="section-heading"><div><p class="eyebrow">Message delivery</p><h3 id="telegram-title">Connect Telegram</h3></div><span id="telegram-badge" class="connection-badge">Checking…</span></div>
+          <p id="telegram-status" class="section-note" role="status">Checking the current connection…</p>
+          <details class="setup-guide">
+            <summary>Telegram setup instructions</summary>
+            <ol>
+              <li>Create a bot with <strong>@BotFather</strong> and copy its token.</li>
+              <li>Create a private forum group, then add the bot as an administrator with permission to manage topics.</li>
+              <li>Find the group’s numeric chat ID and each operator’s numeric Telegram user ID.</li>
+            </ol>
+            <p>Threadpost cannot discover these IDs for you. Only people whose numeric IDs you enter can send operator replies.</p>
+          </details>
+          <form id="telegram-form" class="settings-form">
+            <label for="telegram-token">Bot token</label>
+            <input id="telegram-token" name="botToken" type="password" autocomplete="new-password" required placeholder="Paste the token from BotFather">
+            <div class="field-grid">
+              <div><label for="telegram-chat-id">Private forum chat ID</label><input id="telegram-chat-id" name="chatId" inputmode="numeric" required placeholder="-100…"></div>
+              <div><label for="telegram-operator-ids">Operator user IDs</label><input id="telegram-operator-ids" name="operatorIds" required placeholder="12345678, 87654321"></div>
+            </div>
+            <div class="form-action"><span id="telegram-error" class="form-error" role="alert"></span><button id="telegram-submit" class="button primary" type="submit">Connect Telegram</button></div>
+          </form>
+        </section>
+        <section class="settings-section" aria-labelledby="snippet-title">
+          <div class="section-heading"><div><p class="eyebrow">Widget appearance</p><h3 id="snippet-title">Snippet customization</h3></div></div>
+          <p class="section-note">These controls customize the copied snippet. They do not change site-wide settings.</p>
+          <div class="field-grid snippet-fields">
+            <div><label for="widget-title">Title</label><input id="widget-title" maxlength="80" placeholder="Use the widget default"></div>
+            <div><label for="widget-greeting">Greeting</label><input id="widget-greeting" maxlength="240" placeholder="Use the widget default"></div>
+            <div><label for="widget-color">Accent</label><div class="color-field"><input id="widget-color" type="color" value="#e4572e"><output id="widget-color-value">#e4572e</output></div></div>
+            <div><label for="widget-position">Position</label><select id="widget-position"><option value="right">Bottom right</option><option value="left">Bottom left</option></select></div>
+          </div>
         <label for="embed-code">Embed snippet</label>
         <textarea id="embed-code" rows="4" readonly></textarea>
         <div class="dialog-footer"><span id="copy-status" role="status"></span><button id="copy-button" class="button primary" type="button">Copy snippet</button></div>
-      </form>
+        </section>
+      </div>
     </dialog>
 
     <dialog id="confirm-dialog" class="dialog confirm-dialog">
