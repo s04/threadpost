@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { recoveryStatements, schemaStatements } from "./schema";
 
@@ -68,6 +68,10 @@ export class Store implements Storage {
     if (!columns.has("blocked")) this.db.exec("ALTER TABLE conversations ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0");
     // A crash after submitting a request cannot prove that it was not delivered.
     this.db.exec(recoveryStatements.join(";"));
+    // Conversation content and session hashes must not inherit a permissive process umask.
+    if (path !== ":memory:") for (const file of [path, `${path}-wal`, `${path}-shm`]) {
+      if (existsSync(file)) chmodSync(file, 0o600);
+    }
   }
   ready() {}
   createAdminSession(tokenHash: string, expiresAt: number, now: number) {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Bridge } from "../src/bridge";
@@ -46,6 +46,15 @@ afterEach(() => {
 });
 
 describe("Store", () => {
+  test("protects the database and SQLite sidecars from other local users", () => {
+    const path = temporaryDatabase();
+    store(path);
+
+    for (const file of [path, `${path}-wal`, `${path}-shm`]) {
+      if (existsSync(file)) expect(statSync(file).mode & 0o777).toBe(0o600);
+    }
+  });
+
   test("conversation tokens are isolated", () => {
     const database = store();
     const first = database.create("First");
