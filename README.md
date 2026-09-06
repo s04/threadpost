@@ -1,8 +1,59 @@
+<p align="center"><img src="docs/assets/banner.svg" alt="Threadpost — website conversations, in your pocket." width="100%"></p>
+
 # Threadpost
+
+[![Checks](https://github.com/s04/threadpost/actions/workflows/check.yml/badge.svg)](https://github.com/s04/threadpost/actions/workflows/check.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-e4572e)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6)](package.json)
+[![CI: manual](https://img.shields.io/badge/CI-manual-625f56)](.github/workflows/check.yml)
 
 Threadpost is a small, self-hosted inbox for conversations started from a website widget. Visitors write from the embedded widget; operators reply from the local admin interface or, when configured, a private Telegram forum.
 
 Threadpost is an open-source starter for one workspace and one running process. It is not a hosted multi-tenant service.
+
+- **One script to embed.** Customize the title, greeting, color, and position.
+- **Reply where you are.** Use the browser inbox or a private Telegram forum, with one topic per conversation.
+- **Messaging basics included.** Automatic updates, unread indicators, opt-in browser notifications, blocking, and deletion.
+- **Your infrastructure.** Bun and SQLite locally; a Cloudflare Worker, Container, and D1 when hosted.
+- **A small TypeScript library.** Reuse the bridge and storage interfaces, or implement your own connector. Telegram ships today; WhatsApp and Matrix adapters are not included.
+
+## A look inside
+
+![Threadpost admin inbox showing a demo visitor conversation, delivery states, and reply composer](docs/assets/inbox.png)
+
+<p align="center"><img src="docs/assets/widget.png" alt="Threadpost mobile chat widget showing the same demo conversation" width="360"></p>
+
+Screenshots use fictional names and local demo messages. No customer data or live provider connection is shown.
+
+## How it fits together
+
+```mermaid
+flowchart LR
+  Visitor["Website visitor<br/>Embedded widget"]
+  Admin["Operator<br/>Browser inbox"]
+  Server["Threadpost · Bun / TypeScript<br/>Authentication · quotas · conversations"]
+  DB[("SQLite or Cloudflare D1<br/>Messages · sessions · outbox")]
+  Bridge["Connector interface<br/>Durable delivery state"]
+  Telegram["Private Telegram forum<br/>One topic per conversation"]
+  Visitor -->|"HTTPS · visitor token"| Server
+  Server -->|"Automatic polling responses"| Visitor
+  Admin <-->|"HTTPS · session cookie"| Server
+  Server <--> DB
+  Server --> Bridge
+  Bridge -->|"Bot API"| Telegram
+  Telegram -->|"Authenticated webhook replies"| Server
+```
+
+Provider secrets stay on the server. On Cloudflare, the Worker serves browser
+assets and applies edge limits, then routes requests through one Durable Object
+to the Bun container. D1 persists data through container sleep and restarts.
+Local deployments run Bun directly with SQLite. Browser notifications need an
+open page; they are not push notifications for a closed browser.
+
+**Checks:** `bun run check` runs type checking, tests, and browser builds locally.
+The badge links to the latest manually dispatched GitHub check; pushes do not
+start hosted CI. Badges for a private repository may be unavailable until the
+repository is public.
 
 ## Requirements
 
@@ -30,9 +81,10 @@ bun run check
 
 The application uses Bun's native SQLite driver. By default, durable state is stored in `data/threadpost.sqlite`.
 
-Use a fresh `DB_PATH` when moving from demo to Telegram, changing the site ID,
-or moving to another bot/group. Each database is bound to its workspace and
-connector so old conversation threads cannot be routed to a different inbox.
+Use **Settings → Telegram** to connect a demo workspace while preserving its
+history. When changing environment-based connector identity, the site ID, or
+the destination bot/group, use a fresh `DB_PATH`. Each database is bound to its
+workspace so old conversation threads cannot be routed to a different inbox.
 
 ## Embed the widget
 

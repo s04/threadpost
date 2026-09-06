@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 360" role="img" aria-labelledby="title desc">
+  <title id="title">Threadpost — website conversations, in your pocket.</title>
+  <desc id="desc">Threadpost's connected conversation mark with an orange thread joining a website to an inbox.</desc>
+  <rect width="1280" height="360" rx="16" fill="#fff9ed"/>
+  <path d="M48 304H1232" stroke="#d8cdbb"/>
+  <g transform="translate(56 60)">
+    <rect width="128" height="128" rx="28" fill="#e4572e"/>
+    <path d="M37 73H29V35H76V63H51V94H99V56H88M37 73V84L51 73M99 94V104L85 94" fill="none" stroke="#fff9ed" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="218" y="129" font-family="Georgia,serif" font-size="76" font-weight="bold" letter-spacing="-3" fill="#24241e">Threadpost<tspan fill="#e4572e">.</tspan></text>
+  <text x="221" y="177" font-family="Arial,sans-serif" font-size="25" fill="#625f56">Website conversations, in your pocket.</text>
+  <text x="58" y="260" font-family="monospace" font-size="15" letter-spacing="2" fill="#625f56">YOUR WEBSITE → YOUR SERVER → YOUR INBOX</text>
+  <g fill="none" stroke="#e4572e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="909" y="77" width="108" height="76" rx="10"/><path d="M909 96H1017M933 86H937M947 86H951M963 153V186Q963 210 987 210H1115Q1139 210 1139 186V159"/>
+    <path d="M1083 83H1195V149H1134L1118 165V149H1083Z M1106 108H1171 M1106 125H1153"/>
+  </g>
+  <text x="58" y="336" font-family="monospace" font-size="12" letter-spacing="1.5" fill="#625f56">SELF-HOSTED · TYPESCRIPT · MIT</text>
+</svg>

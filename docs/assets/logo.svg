@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Threadpost</title>
+  <desc id="desc">A continuous cream thread forming two connected conversation bubbles on an orange square.</desc>
+  <rect width="128" height="128" rx="28" fill="#e4572e"/>
+  <path d="M37 73H29V35H76V63H51V94H99V56H88M37 73V84L51 73M99 94V104L85 94" fill="none" stroke="#fff9ed" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
