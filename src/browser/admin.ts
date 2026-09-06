@@ -38,6 +38,7 @@ let notificationsEnabled = false;
 let pollTimer: number | undefined;
 let pollRunning = false;
 let pollFailures = 0;
+let initialConversation = new URL(location.href).searchParams.get("conversation");
 
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
@@ -230,6 +231,10 @@ async function loadApp() {
   } catch (error) {
     if (error instanceof HttpError && error.status === 401) setAuthenticated(false);
     else { setAuthenticated(false); handleError(error, $("login-error")); }
+    if (initialConversation && /^[a-zA-Z0-9-]{1,80}$/.test(initialConversation)) {
+      const id = initialConversation; initialConversation = null;
+      await selectConversation(id);
+    }
   }
 }
 

@@ -36,6 +36,16 @@
 
   function mount() {
 
+  function browserContext() {
+    let referrerUrl: string | undefined, timezone: string | undefined;
+    try {
+      const referrer = new URL(document.referrer);
+      if (["http:", "https:"].includes(referrer.protocol)) referrerUrl = referrer.origin;
+    } catch { /* Direct visits and restricted referrers have no source site. */ }
+    try { timezone = Intl.DateTimeFormat().resolvedOptions().timeZone?.slice(0, 80); } catch { /* Optional context. */ }
+    return { referrerUrl, language: navigator.language?.slice(0, 35), timezone };
+  }
+
   const siteId = (script.dataset.site || "").trim();
   if (!siteId) {
     console.error("Threadpost: widget script requires a data-site attribute.");
@@ -482,7 +492,7 @@
         const created = await api<ConversationCreated>("/api/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ siteId, name: nameInput.value.trim() || undefined, clientToken: pending.clientToken, pageUrl: location.origin + location.pathname, turnstileToken: turnstileToken || undefined })
+          body: JSON.stringify({ siteId, name: nameInput.value.trim() || undefined, clientToken: pending.clientToken, pageUrl: location.origin + location.pathname, ...browserContext(), turnstileToken: turnstileToken || undefined })
         });
         saveSession({ id: created.id, token: created.token });
         status = created.status || "open";

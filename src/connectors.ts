@@ -81,7 +81,7 @@ export class TelegramConnector implements Connector {
         : "Unavailable";
       const started = clip(conversation.createdAt, 64);
       const id = clip(conversation.id, 80);
-      const admin = clip(`${this.config.publicUrl}/admin`, 300);
+      const admin = clip(`${this.config.publicUrl}/admin?conversation=${encodeURIComponent(conversation.id)}`, 420);
       text = ["New visitor context", `Site: ${site}`, `Browser-reported name: ${name}`,
         `Browser-reported page: ${page}`, `Started: ${started}`, `Conversation: ${id}`,
         `Browser-reported referrer: ${conversation.referrerOrigin ? clip(conversation.referrerOrigin, 300) : "Unavailable"}`,

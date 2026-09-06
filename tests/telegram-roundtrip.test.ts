@@ -32,7 +32,7 @@ test("website → Telegram topic → authenticated operator reply → website", 
     expect(requests[1].payload.text).toContain("Browser-reported name: Visitor");
     expect(requests[1].payload.text).toContain("Browser-reported page: https://chat.example/pricing");
     expect(requests[1].payload.text).toContain(`Conversation: ${created.id}`);
-    expect(requests[1].payload.text).toContain("Open admin: https://chat.example/admin");
+    expect(requests[1].payload.text).toContain(`Open admin: https://chat.example/admin?conversation=${created.id}`);
     await app(request(`/api/conversations/${created.id}/messages`, { body: "Second", clientMessageId: "message-two" }, { Authorization: `Bearer ${created.token}` }));
     await bridge.flush();
     expect(requests[2].payload.text).toBe("Visitor message\n\nSecond");
