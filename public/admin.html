@@ -87,10 +87,12 @@
             <summary>Telegram setup instructions</summary>
             <ol>
               <li>Create a bot with <strong>@BotFather</strong> and copy its token.</li>
-              <li>Create a private group and enable <strong>Topics</strong> in its settings. Add the bot as an administrator with <strong>Manage Topics</strong> permission.</li>
+              <li>Create a private group and enable <strong>Topics</strong> in its settings.</li>
+              <li>Open <strong>Group info → Edit / Manage Group → Administrators → Add Administrator</strong>. Search for the exact bot username shown by BotFather, select your bot, enable <strong>Manage Topics</strong>, and save. Menu names vary between mobile, desktop, and web.</li>
               <li>Find the group’s numeric chat ID and each operator’s numeric Telegram user ID.</li>
             </ol>
             <p>Threadpost cannot discover these IDs for you. Only people whose numeric IDs you enter can send operator replies.</p>
+            <p><strong>“Telegram could not access that group” or “chat not found”?</strong> Check the chat ID, then add the same bot whose token you entered to that group using the administrator steps above. Creating a bot in BotFather or messaging it privately does not add it to your group. Save its permissions, then click <strong>Connect Telegram</strong> again.</p>
           </details>
           <form id="telegram-form" class="settings-form">
             <label for="telegram-token">Bot token</label>

@@ -147,12 +147,18 @@ be moved to a different bot/group through this form.
 Alternatively, configure the connector through environment variables:
 
 1. Create a bot with BotFather and keep its token private.
-2. Create a private supergroup, enable forum topics, and add the bot as an administrator with permission to manage topics and messages.
+2. Create a private supergroup and enable Topics. Open **Group info → Edit / Manage Group → Administrators → Add Administrator**, search for the exact bot username shown by BotFather, select it, enable **Manage Topics**, and save. Menu names vary between mobile, desktop, and web.
 3. Set `CONNECTOR=telegram`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_OPERATOR_IDS`, and a unique `TELEGRAM_WEBHOOK_SECRET` of at least 32 characters.
 4. Set `PUBLIC_URL` to the public HTTPS origin that reaches Threadpost.
 5. Run `bun run src/setup-telegram.ts` once to verify the configuration and register `${PUBLIC_URL}/webhooks/telegram`.
 
 The webhook route authenticates Telegram requests with its secret header. Application startup does not register or change the webhook. Telegram operator IDs are numeric IDs, not usernames.
+
+If setup reports **“Telegram could not access that group”** or Telegram returns
+**“chat not found”**, check the chat ID and add the same bot whose token you
+entered to that group using the administrator steps above. Creating a bot in
+BotFather or messaging it privately does not add it to a group. Save its
+permissions, then retry **Connect Telegram**.
 
 Messages from the website appear in one forum topic per conversation. Replies sent in Telegram are relayed to the web visitor. Replies sent from the Threadpost admin are stored and delivered directly to the visitor; they are not echoed into Telegram.
 
