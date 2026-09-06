@@ -21,7 +21,7 @@ export class Bridge {
           if (!threadId) {
             await this.store.thread(conversation.id, "sending");
             try {
-              threadId = await this.connector.createThread(conversation.id);
+              threadId = await this.connector.createThread(conversation.id, { sourcePath: conversation.sourcePath });
               await this.store.thread(conversation.id, "sent", threadId);
             } catch (error) {
               await this.store.thread(conversation.id, error instanceof DeliveryError && !error.uncertain ? "failed" : "unknown");
@@ -43,6 +43,7 @@ export class Bridge {
     if (!message) throw new AppError(404, "Message not found.");
     if (!["failed", "unknown"].includes(message.deliveryStatus)) throw new AppError(409, "Only failed or uncertain deliveries can be retried.");
     const conversation = await this.store.require(message.conversationId);
+    if (conversation.blocked) throw new AppError(403, "Unblock this conversation before retrying delivery.");
     if (!conversation.threadId) await this.store.thread(conversation.id, "pending");
     await this.store.delivery(id, "pending");
     return this.store.message(id);

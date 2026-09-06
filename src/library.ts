@@ -11,4 +11,4 @@ export type { TelegramStatus, TelegramConnectInput } from "./telegram-settings";
 export { readConfig } from "./config";
 export type { Config } from "./config";
 export { DemoConnector, TelegramConnector, DeliveryError } from "./connectors";
-export type { Connector, OperatorReply } from "./connectors";
+export type { Connector, ConversationContext, OperatorReply } from "./connectors";

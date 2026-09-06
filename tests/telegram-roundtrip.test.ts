@@ -21,10 +21,11 @@ test("website → Telegram topic → authenticated operator reply → website", 
     const bridge = new Bridge(store, new TelegramConnector(config, transport)), app = createApp(config, bridge);
     const request = (path: string, data: any, headers: Record<string, string> = {}) => new Request(config.publicUrl + path,
       { method: "POST", headers: { "Content-Type": "application/json", Origin: config.publicUrl, ...headers }, body: JSON.stringify(data) });
-    const created = await (await app(request("/api/conversations", { siteId: "test" }))).json() as any;
+    const created = await (await app(request("/api/conversations", { siteId: "test", pageUrl: "https://chat.example/pricing?plan=pro#details" }))).json() as any;
     await app(request(`/api/conversations/${created.id}/messages`, { body: "Hello", clientMessageId: "message-one" }, { Authorization: `Bearer ${created.token}` }));
     await bridge.flush();
     expect(requests.map(r => r.method)).toEqual(["createForumTopic", "sendMessage"]);
+    expect(requests[0].payload).toMatchObject({ chat_id: "-10042", name: "Test · Visitor " + created.id.slice(0, 8) + " · Reported page /pricing" });
     expect(requests[1].payload).toMatchObject({ chat_id: "-10042", message_thread_id: 101, text: "Visitor message\n\nHello" });
     const update = { update_id: 200, message: { chat: { id: -10042 }, from: { id: 42, is_bot: false }, message_thread_id: 101, text: "Hi there" } };
     expect((await app(request("/webhooks/telegram", update))).status).toBe(401);
@@ -34,4 +35,21 @@ test("website → Telegram topic → authenticated operator reply → website", 
     const result = await (await app(new Request(`${config.publicUrl}/api/conversations/${created.id}/messages`, { headers: { Authorization: `Bearer ${created.token}` } }))).json() as any;
     expect(result.messages.map((m: any) => m.body)).toEqual(["Hello", "Hi there"]);
   } finally { store.db.close(); }
+});
+
+test("Telegram topic context is labeled, sanitized, and bounded", async () => {
+  const topicNames: string[] = [];
+  const transport = (async (_url: string | URL | Request, options?: RequestInit) => {
+    topicNames.push((JSON.parse(String(options?.body)) as { name: string }).name);
+    return Response.json({ ok: true, result: { message_thread_id: 101 } });
+  }) as typeof fetch;
+  const contextualConfig: Config = { host: "127.0.0.1", port: 8788, publicUrl: "https://chat.example",
+    adminToken: "a".repeat(40), dbPath: ":memory:", siteId: "test", siteName: "Trusted\nSite",
+    origins: ["https://chat.example"], connector: "telegram", telegramToken: "123:synthetic",
+    telegramChatId: "-10042", telegramOperators: ["42"], webhookSecret: "s".repeat(40) };
+  const connector = new TelegramConnector(contextualConfig, transport);
+  await connector.createThread("12345678-rest", { sourcePath: "/reported\npath\u202E" + "x".repeat(200) });
+  expect(topicNames[0].startsWith("Trusted Site · Visitor 12345678 · Reported page /reported path")).toBe(true);
+  expect(topicNames[0]).not.toMatch(/[\n\u202E]/);
+  expect(Array.from(topicNames[0]).length).toBeLessThanOrEqual(128);
 });

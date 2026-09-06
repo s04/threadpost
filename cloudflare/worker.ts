@@ -10,6 +10,13 @@ interface Env {
   SITE_ID: string;
   SITE_NAME: string;
   ALLOWED_ORIGINS: string;
+  TURNSTILE_SITE_KEY?: string;
+  TURNSTILE_SECRET_KEY?: string;
+  MAX_NEW_CONVERSATIONS_PER_DAY?: string;
+  MAX_MESSAGES_PER_DAY?: string;
+  EDGE_RATE_LIMIT: RateLimit;
+  START_RATE_LIMIT: RateLimit;
+  WORKSPACE_RATE_LIMIT: RateLimit;
 }
 
 const internalHeader = "x-threadpost-internal";
@@ -27,12 +34,15 @@ export class ChatContainer extends Container<Env> {
     SITE_NAME: this.env.SITE_NAME, ALLOWED_ORIGINS: this.env.ALLOWED_ORIGINS,
     ADMIN_TOKEN: this.env.ADMIN_TOKEN, CONTAINER_INTERNAL_TOKEN: this.env.INTERNAL_TOKEN,
     SETTINGS_KEY: this.env.INTERNAL_TOKEN,
+    TURNSTILE_SITE_KEY: this.env.TURNSTILE_SITE_KEY || "", TURNSTILE_SECRET_KEY: this.env.TURNSTILE_SECRET_KEY || "",
+    MAX_NEW_CONVERSATIONS_PER_DAY: this.env.MAX_NEW_CONVERSATIONS_PER_DAY || "200",
+    MAX_MESSAGES_PER_DAY: this.env.MAX_MESSAGES_PER_DAY || "5000",
     D1_URL: `${this.env.PUBLIC_URL}/_d1`, D1_TOKEN: this.env.INTERNAL_TOKEN,
   };
 
   override fetch(request: Request): Promise<Response> {
     // One writer owns this workspace. D1 persists data when the container sleeps.
-    if (this.waiting >= 100) return Promise.resolve(unavailable());
+    if (this.waiting >= 32) return Promise.resolve(unavailable());
     this.waiting++;
     const result = this.queue.then(async () => {
       const headers = new Headers(request.headers);
@@ -93,10 +103,41 @@ export default {
     if (path.startsWith("/_")) return new Response("Not found", { status: 404 });
     if (request.method === "GET" && ["/widget.js", "/admin.js", "/admin.css", "/site.css"].includes(path))
       return env.ASSETS.fetch(request);
+    const widgetRoute = path.startsWith("/api/conversations") || path === "/api/widget-config";
+    const origin = request.headers.get("origin");
+    const allowed = [env.PUBLIC_URL, ...env.ALLOWED_ORIGINS.split(",").map(s => s.trim())];
+    const cors: Record<string, string> = origin && allowed.includes(origin) ? {
+      "Access-Control-Allow-Origin": origin, "Vary": "Origin",
+      "Access-Control-Allow-Headers": "Authorization, Content-Type",
+      "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+      "Access-Control-Expose-Headers": "Retry-After",
+    } : {};
+    if (widgetRoute && origin && !allowed.includes(origin))
+      return Response.json({ error: "This website is not allowed to use this inbox." }, { status: 403 });
+    if (widgetRoute && request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+    const knownPath = ["/", "/admin", "/admin/", "/healthz", "/api/widget-config", "/webhooks/telegram"].includes(path)
+      || /^\/api\/(admin\/|conversations(?:\/|$))/.test(path);
+    if (!knownPath) return new Response("Not found", { status: 404 });
+    const ip = request.headers.get("cf-connecting-ip") || "unknown";
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${env.INTERNAL_TOKEN}:${ip}`));
+    const key = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
+    const general = await env.EDGE_RATE_LIMIT.limit({ key });
+    const workspace = await env.WORKSPACE_RATE_LIMIT.limit({ key: "dynamic-requests" });
+    const starting = path === "/api/conversations" && request.method === "POST";
+    const start = starting ? await env.START_RATE_LIMIT.limit({ key }) : { success: true };
+    if (!general.success || !workspace.success || !start.success)
+      return Response.json({ error: "Too many requests. Please wait a minute." }, {
+        status: 429, headers: { ...cors, "Retry-After": "60", "Cache-Control": "no-store" },
+      });
+    if (path === "/api/widget-config" && request.method === "GET") {
+      if (new URL(request.url).searchParams.get("siteId") !== env.SITE_ID) return new Response("Not found", { status: 404 });
+      return Response.json({ siteId: env.SITE_ID, turnstileSiteKey: env.TURNSTILE_SITE_KEY || null },
+        { headers: { ...cors, "Cache-Control": "no-store" } });
+    }
     // Incoming headers cannot impersonate the private container transport.
     const headers = new Headers(request.headers);
     headers.delete(internalHeader);
-    headers.set("x-threadpost-client-ip", request.headers.get("cf-connecting-ip") || "unknown");
+    headers.set("x-threadpost-client-ip", ip);
     return env.CHAT.getByName("workspace").fetch(new Request(request, { headers }));
   },
 } satisfies ExportedHandler<Env>;

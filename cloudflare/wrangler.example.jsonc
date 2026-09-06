@@ -4,6 +4,11 @@
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "ratelimits": [
+    { "name": "EDGE_RATE_LIMIT", "namespace_id": "1001", "simple": { "limit": 240, "period": 60 } },
+    { "name": "START_RATE_LIMIT", "namespace_id": "1002", "simple": { "limit": 5, "period": 60 } },
+    { "name": "WORKSPACE_RATE_LIMIT", "namespace_id": "1003", "simple": { "limit": 1200, "period": 60 } }
+  ],
   "containers": [{ "class_name": "ChatContainer", "image": "../Dockerfile", "max_instances": 1, "instance_type": "lite" }],
   "durable_objects": { "bindings": [{ "name": "CHAT", "class_name": "ChatContainer" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ChatContainer"] }],
@@ -11,6 +16,8 @@
   "assets": { "directory": "../public", "binding": "ASSETS", "run_worker_first": true },
   "vars": {
     "PUBLIC_URL": "https://chat.example.com", "SITE_ID": "demo", "SITE_NAME": "Demo site",
-    "ALLOWED_ORIGINS": "https://example.com"
+    "ALLOWED_ORIGINS": "https://example.com",
+    "MAX_NEW_CONVERSATIONS_PER_DAY": "200",
+    "MAX_MESSAGES_PER_DAY": "5000"
   }
 }

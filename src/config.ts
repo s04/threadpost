@@ -2,6 +2,8 @@ export interface Config {
   host: string; port: number; publicUrl: string; adminToken: string; dbPath: string;
   siteId: string; siteName: string; origins: string[]; connector: "demo" | "telegram";
   telegramToken: string; telegramChatId: string; telegramOperators: string[]; webhookSecret: string;
+  turnstileSiteKey?: string; turnstileSecret?: string;
+  maxNewConversationsPerDay?: number; maxMessagesPerDay?: number;
 }
 
 export function readConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -28,8 +30,14 @@ export function readConfig(env: Record<string, string | undefined> = process.env
     telegramToken: env.TELEGRAM_BOT_TOKEN || "", telegramChatId: env.TELEGRAM_CHAT_ID || "",
     telegramOperators: (env.TELEGRAM_OPERATOR_IDS || "").split(",").map(s => s.trim()).filter(Boolean),
     webhookSecret: env.TELEGRAM_WEBHOOK_SECRET || "",
+    turnstileSiteKey: env.TURNSTILE_SITE_KEY || "", turnstileSecret: env.TURNSTILE_SECRET_KEY || "",
+    maxNewConversationsPerDay: Number(env.MAX_NEW_CONVERSATIONS_PER_DAY || "200"),
+    maxMessagesPerDay: Number(env.MAX_MESSAGES_PER_DAY || "5000"),
   };
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) throw new Error("Invalid PORT.");
+  if (Boolean(config.turnstileSiteKey) !== Boolean(config.turnstileSecret)) throw new Error("Configure both Turnstile keys together.");
+  if (![config.maxNewConversationsPerDay, config.maxMessagesPerDay].every(n => Number.isSafeInteger(n) && n! > 0))
+    throw new Error("Daily chat limits must be positive integers.");
   if (!/^[a-zA-Z0-9_-]{1,64}$/.test(config.siteId)) throw new Error("SITE_ID must be 1-64 letters, digits, underscores or hyphens.");
   if (connector === "telegram" && (!/^\d+:[A-Za-z0-9_-]+$/.test(config.telegramToken)
     || !/^-\d+$/.test(config.telegramChatId) || !config.telegramOperators.length

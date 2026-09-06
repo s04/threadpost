@@ -27,6 +27,31 @@ function setup() {
 afterEach(() => { while (databases.length) databases.pop()!.close(); });
 
 describe("D1Store", () => {
+  test("persists attribution, blocking, inbound watermarks, and quotas", async () => {
+    const { transport, store } = setup(); await store.ready();
+    const conversation = await store.create("Visitor", undefined, { origin: "https://site.example", path: "/contact" });
+    const inbound = await store.add(conversation.id, "inbound", "hello", "source-message");
+    expect((await store.findMessage(conversation.id, "inbound", "source-message"))?.id).toBe(inbound.id);
+    expect(await store.findMessage(conversation.id, "outbound", "source-message")).toBeNull();
+    expect((await store.list())[0]).toMatchObject({ sourceOrigin: "https://site.example", sourcePath: "/contact", lastInboundId: inbound.id, blocked: false });
+    expect((await store.findByToken(conversation.token))?.id).toBe(conversation.id);
+    expect((await store.setBlocked(conversation.id, true)).blocked).toBe(true);
+    await expect(store.add(conversation.id, "inbound", "blocked", "blocked-message")).rejects.toMatchObject({ status: 403 });
+    expect(await store.consumeQuota("message:synthetic-hash", 1, 1000, 100)).toBe(true);
+    const restarted = new D1Store(transport);
+    expect(await restarted.consumeQuota("message:synthetic-hash", 1, 1000, 200)).toBe(false);
+    expect(await restarted.consumeQuota("message:synthetic-hash", 1, 1000, 1101)).toBe(true);
+  });
+
+  test("does not return blocked conversations from the pending outbox", async () => {
+    const { store } = setup(); await store.ready();
+    const blocked = await store.create("Blocked"), visible = await store.create("Visible");
+    await store.add(blocked.id, "inbound", "blocked pending", "blocked-pending");
+    const visibleMessage = await store.add(visible.id, "inbound", "visible pending", "visible-pending");
+    await store.setBlocked(blocked.id, true);
+    expect((await store.pending()).map(message => message.id)).toEqual([visibleMessage.id]);
+  });
+
   test("isolates tokens and preserves message idempotency", async () => {
     const { store } = setup(); await store.ready(); await store.bindWorkspace("site:demo");
     const first = await store.create("First"), second = await store.create("Second");

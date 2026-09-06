@@ -2,8 +2,8 @@
 
 type ConversationStatus = "open" | "closed";
 type DeliveryStatus = "pending" | "sending" | "sent" | "failed" | "unknown";
-interface Conversation { id: string; name: string; status: ConversationStatus; createdAt: string; updatedAt: string; }
-interface ConversationSummary extends Conversation { lastMessage: string | null; messageCount: number; }
+interface Conversation { id: string; name: string; status: ConversationStatus; blocked: boolean; createdAt: string; updatedAt: string; sourceOrigin: string | null; sourcePath: string | null; }
+interface ConversationSummary extends Conversation { lastMessage: string | null; messageCount: number; lastInboundId: number; }
 interface Message { id: number; direction: "inbound" | "outbound"; body: string; createdAt: string; deliveryStatus: DeliveryStatus; }
 interface Thread { conversation: Conversation; messages: Message[]; }
 interface Overview {
@@ -15,7 +15,7 @@ interface Overview {
 interface TelegramConnection { connected: boolean; botUsername?: string; chatId?: string; operatorIds?: string[]; }
 interface AppState {
   overview: Overview | null; conversations: ConversationSummary[]; selectedId: string | null;
-  conversation: Thread | null; loading: boolean; threadRequest: number; replyId: string | null; replyBody: string | null;
+  conversation: Thread | null; loading: boolean; threadRequest: number;
 }
 class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
 
@@ -24,15 +24,25 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   if (!node) throw new Error(`Missing required element #${id}`);
   return node as T;
 };
-const state: AppState = { overview: null, conversations: [], selectedId: null, conversation: null, loading: false, threadRequest: 0, replyId: null, replyBody: null };
+const state: AppState = { overview: null, conversations: [], selectedId: null, conversation: null, loading: false, threadRequest: 0 };
 const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 const shortTime = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 let snippetInitialized = false;
+const drafts = new Map<string, string>();
+const sending = new Set<string>();
+const replyAttempts = new Map<string, { id: string; body: string }>();
+const readWatermarks = new Map<string, number>();
+const notifiedInbound = new Map<string, number>();
+let watermarksLoaded = false;
+let notificationsEnabled = false;
+let pollTimer: number | undefined;
+let pollRunning = false;
+let pollFailures = 0;
 
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
   if (options.body) headers.set("Content-Type", "application/json");
-  const response = await fetch(path, { ...options, headers, credentials: "same-origin" });
+  const response = await fetch(path, { ...options, headers, credentials: "same-origin", signal: options.signal || AbortSignal.timeout(15_000) });
   let data: unknown = null;
   try { data = await response.json(); } catch { /* An empty response is valid for logout/delete. */ }
   if (!response.ok) {
@@ -47,6 +57,7 @@ function setAuthenticated(authenticated: boolean) {
   $("admin-view").hidden = !authenticated;
   if (authenticated) $<HTMLInputElement>("token").value = "";
   if (!authenticated) {
+    if (pollTimer !== undefined) window.clearTimeout(pollTimer);
     state.overview = null; state.conversations = []; state.selectedId = null; state.conversation = null;
     setTimeout(() => $<HTMLInputElement>("token").focus(), 0);
   }
@@ -72,6 +83,27 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, te
 }
 function displayName(conversation: Conversation) { return conversation.name?.trim() || "Anonymous visitor"; }
 function formatDate(value: string) { const date = new Date(value); return Number.isNaN(date.valueOf()) ? "" : dateTime.format(date); }
+function sourceLabel(conversation: Conversation) {
+  const siteName = state.overview?.site.name || "Website";
+  if (!conversation.sourceOrigin) return siteName;
+  try {
+    const url = new URL(conversation.sourceOrigin);
+    const path = conversation.sourcePath?.startsWith("/") ? conversation.sourcePath : "";
+    return `${siteName} · Browser-reported: ${url.host}${path}`;
+  } catch { return siteName; }
+}
+function watermarkKey() { return `threadpost:read:${state.overview?.site.id || "default"}`; }
+function saveWatermarks() {
+  try { localStorage.setItem(watermarkKey(), JSON.stringify(Object.fromEntries(readWatermarks))); } catch { /* Storage can be unavailable. */ }
+}
+function loadWatermarks() {
+  if (watermarksLoaded) return;
+  try {
+    const saved = JSON.parse(localStorage.getItem(watermarkKey()) || "{}");
+    if (saved && typeof saved === "object") for (const [id, value] of Object.entries(saved)) if (Number.isSafeInteger(value)) readWatermarks.set(id, Number(value));
+  } catch { /* Ignore malformed or unavailable local storage. */ }
+  watermarksLoaded = true;
+}
 function escapeAttribute(value: string) {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -127,11 +159,69 @@ async function loadTelegram() {
   catch (error) { handleError(error, $("telegram-status")); }
 }
 
+function renderNotificationButton() {
+  const button = $<HTMLButtonElement>("notification-button");
+  if (!("Notification" in window) || typeof Notification.requestPermission !== "function") { button.textContent = "Alerts unavailable"; button.disabled = true; return; }
+  button.disabled = Notification.permission === "denied";
+  button.textContent = Notification.permission === "denied" ? "Alerts blocked" : notificationsEnabled ? "Alerts on" : "Alerts off";
+  button.setAttribute("aria-pressed", String(notificationsEnabled));
+}
+
+function loadNotificationPreference() {
+  try { notificationsEnabled = localStorage.getItem("threadpost:notifications") === "on" && "Notification" in window && typeof Notification.requestPermission === "function" && Notification.permission === "granted"; }
+  catch { notificationsEnabled = false; }
+  renderNotificationButton();
+}
+
+function notifyConversation(conversation: ConversationSummary) {
+  if (!notificationsEnabled || !("Notification" in window) || Notification.permission !== "granted") return;
+  try {
+    const notification = new Notification(`New message · ${state.overview?.site.name || "Threadpost"}`, {
+      body: "A visitor sent a new message.", tag: `threadpost-${conversation.id}`,
+    });
+    notification.onclick = () => { window.focus(); void selectConversation(conversation.id); notification.close(); };
+  } catch {
+    notificationsEnabled = false;
+    try { localStorage.setItem("threadpost:notifications", "off"); } catch { /* Preference stays in memory. */ }
+    renderNotificationButton();
+  }
+}
+
+function processIncoming(conversations: ConversationSummary[], initial = false) {
+  loadWatermarks();
+  for (const conversation of conversations) {
+    const latest = Number(conversation.lastInboundId) || 0;
+    if (!readWatermarks.has(conversation.id)) {
+      readWatermarks.set(conversation.id, initial ? latest : 0);
+    }
+    if (!notifiedInbound.has(conversation.id)) notifiedInbound.set(conversation.id, initial ? latest : 0);
+    const notified = notifiedInbound.get(conversation.id) || 0;
+    if (!initial && latest > notified) {
+      const activelyReading = conversation.id === state.selectedId && !document.hidden && document.hasFocus();
+      if (!activelyReading) notifyConversation(conversation);
+      notifiedInbound.set(conversation.id, latest);
+    }
+  }
+  saveWatermarks();
+}
+
+function markRead(conversationId: string, messages: Message[]) {
+  if (document.hidden || !document.hasFocus()) return;
+  const latest = messages.reduce((id, message) => message.direction === "inbound" ? Math.max(id, message.id) : id, 0);
+  if (latest > (readWatermarks.get(conversationId) || 0)) { readWatermarks.set(conversationId, latest); saveWatermarks(); }
+}
+
+function resetThread() {
+  state.selectedId = null; state.conversation = null; state.threadRequest++;
+  document.body.classList.remove("thread-open");
+  $("active-thread").hidden = true; $("empty-thread").hidden = false;
+}
+
 async function loadApp() {
   try {
     const [overview, result] = await Promise.all([api<Overview>("/api/admin/overview"), api<{ conversations: ConversationSummary[] }>("/api/admin/conversations")]);
-    state.overview = overview; state.conversations = result.conversations || [];
-    setAuthenticated(true); renderOverview(); renderList();
+    state.overview = overview; processIncoming(result.conversations || [], true); state.conversations = result.conversations || [];
+    setAuthenticated(true); renderOverview(); renderList(); schedulePoll();
   } catch (error) {
     if (error instanceof HttpError && error.status === 401) setAuthenticated(false);
     else { setAuthenticated(false); handleError(error, $("login-error")); }
@@ -161,29 +251,35 @@ function renderList() {
   const list = $("conversation-list"); clear(list);
   show($("list-status"), state.conversations.length ? "" : "No conversations yet.");
   state.conversations.forEach((conversation) => {
-    const button = el("button", "conversation-item"); button.type = "button";
+    const unread = (Number(conversation.lastInboundId) || 0) > (readWatermarks.get(conversation.id) || 0);
+    const button = el("button", `conversation-item${unread ? " unread" : ""}`); button.type = "button";
     button.dataset.id = conversation.id; button.setAttribute("aria-current", conversation.id === state.selectedId ? "true" : "false");
     const top = el("span", "conversation-top"); top.append(el("strong", "", displayName(conversation)), el("time", "", formatDate(conversation.updatedAt)));
     const preview = el("span", "conversation-preview", conversation.lastMessage || "No messages yet");
+    const source = el("span", "conversation-source", sourceLabel(conversation));
     const bottom = el("span", "conversation-bottom");
-    bottom.append(el("span", `status-pill ${conversation.status}`, conversation.status), el("span", "", `${conversation.messageCount} message${conversation.messageCount === 1 ? "" : "s"}`));
-    button.append(top, preview, bottom); button.addEventListener("click", () => selectConversation(conversation.id)); list.append(button);
+    bottom.append(el("span", `status-pill ${conversation.blocked ? "blocked" : conversation.status}`, conversation.blocked ? "blocked" : conversation.status), el("span", "", `${conversation.messageCount} message${conversation.messageCount === 1 ? "" : "s"}`));
+    button.append(top, preview, source, bottom); button.addEventListener("click", () => selectConversation(conversation.id)); list.append(button);
   });
 }
 
-async function refresh(quiet = false): Promise<void> {
-  if (state.loading) return;
+async function refresh(quiet = false): Promise<boolean> {
+  if (state.loading) return true;
   state.loading = true; $<HTMLButtonElement>("refresh-button").disabled = true;
   if (!quiet) show($("list-status"), "Refreshing…");
   try {
     const [overview, result] = await Promise.all([api<Overview>("/api/admin/overview"), api<{ conversations: ConversationSummary[] }>("/api/admin/conversations")]);
-    state.overview = overview; state.conversations = result.conversations || []; renderOverview(); renderList();
+    state.overview = overview; processIncoming(result.conversations || []); state.conversations = result.conversations || []; renderOverview(); renderList();
     if (state.selectedId) await selectConversation(state.selectedId, false, true);
-  } catch (error) { handleError(error, $("list-status")); }
+    return true;
+  } catch (error) { handleError(error, $("list-status")); return false; }
   finally { state.loading = false; $<HTMLButtonElement>("refresh-button").disabled = false; }
 }
 
 async function selectConversation(id: string, moveFocus = true, quiet = false): Promise<void> {
+  const previousId = state.selectedId;
+  if (previousId && previousId !== id) drafts.set(previousId, $<HTMLTextAreaElement>("reply").value);
+  const changedConversation = previousId !== id;
   const requestId = ++state.threadRequest;
   state.selectedId = id; renderList();
   $("empty-thread").hidden = true; $("active-thread").hidden = false; document.body.classList.add("thread-open");
@@ -194,11 +290,16 @@ async function selectConversation(id: string, moveFocus = true, quiet = false): 
   try {
     const result = await api<Thread>(`/api/admin/conversations/${encodeURIComponent(id)}`);
     if (requestId !== state.threadRequest || id !== state.selectedId) return;
+    const unchanged = !changedConversation && state.conversation
+      && JSON.stringify(state.conversation) === JSON.stringify(result);
     state.conversation = result;
-    renderThread(quiet);
+    markRead(id, result.messages); renderList();
+    if (changedConversation) $<HTMLTextAreaElement>("reply").value = drafts.get(id) || "";
+    if (!unchanged) renderThread(quiet);
     if (moveFocus) $("thread-name").focus?.();
   } catch (error) {
     if (requestId !== state.threadRequest) return;
+    if (quiet && error instanceof HttpError && error.status === 404) { resetThread(); renderList(); return; }
     if (!quiet) clear($("message-list"));
     handleError(error, $("thread-error"));
   }
@@ -209,11 +310,16 @@ function renderThread(preserveScroll = false) {
   const { conversation, messages } = state.conversation;
   $("thread-name").textContent = displayName(conversation);
   $("thread-name").tabIndex = -1;
-  $("thread-meta").textContent = `Started ${formatDate(conversation.createdAt)} · ${conversation.status}`;
+  $("thread-meta").textContent = `${sourceLabel(conversation)} · Started ${formatDate(conversation.createdAt)} · ${conversation.blocked ? "blocked" : conversation.status}`;
   $("status-button").textContent = conversation.status === "open" ? "Close" : "Reopen";
-  $("reply-form").hidden = conversation.status !== "open";
-  $("closed-note").hidden = conversation.status === "open";
-  $<HTMLTextAreaElement>("reply").disabled = false; $<HTMLButtonElement>("reply-form").querySelector<HTMLButtonElement>("button[type=submit]")!.disabled = false;
+  $("block-button").textContent = conversation.blocked ? "Unblock" : "Block";
+  const canReply = conversation.status === "open" && !conversation.blocked;
+  $("reply-form").hidden = !canReply;
+  $("closed-note").hidden = canReply;
+  $("closed-note").textContent = conversation.blocked ? "This visitor is blocked. Unblock them to receive messages and reply." : "This conversation is closed. Reopen it to reply.";
+  const isSending = sending.has(conversation.id);
+  $<HTMLTextAreaElement>("reply").disabled = isSending;
+  $<HTMLButtonElement>("reply-form").querySelector<HTMLButtonElement>("button[type=submit]")!.disabled = isSending;
   const list = $("message-list");
   const oldScrollTop = list.scrollTop;
   const wasNearBottom = list.scrollHeight - list.clientHeight - list.scrollTop < 80;
@@ -237,16 +343,23 @@ function renderThread(preserveScroll = false) {
 async function submitReply(event: SubmitEvent) {
   event.preventDefault(); const input = $<HTMLTextAreaElement>("reply"); const body = input.value.trim(); if (!body || !state.selectedId) return;
   const conversationId = state.selectedId;
+  if (sending.has(conversationId)) return;
+  sending.add(conversationId);
   const form = event.currentTarget as HTMLFormElement;
-  const button = form.querySelector<HTMLButtonElement>("button[type=submit]")!; button.disabled = true; show($("reply-status"), "Sending…");
+  const button = form.querySelector<HTMLButtonElement>("button[type=submit]")!; button.disabled = true; input.disabled = true; show($("reply-status"), "Sending…");
   try {
-    if (!state.replyId || state.replyBody !== body) state.replyId = crypto.randomUUID();
-    state.replyBody = body;
-    await api<Message>(`/api/admin/conversations/${encodeURIComponent(conversationId)}/messages`, { method: "POST", body: JSON.stringify({ body, clientMessageId: state.replyId }) });
-    state.replyId = null; state.replyBody = null; input.value = ""; show($("reply-status"), "Sent"); await selectConversation(conversationId, false);
+    let attempt = replyAttempts.get(conversationId);
+    if (!attempt || attempt.body !== body) { attempt = { id: crypto.randomUUID(), body }; replyAttempts.set(conversationId, attempt); }
+    await api<Message>(`/api/admin/conversations/${encodeURIComponent(conversationId)}/messages`, { method: "POST", body: JSON.stringify({ body, clientMessageId: attempt.id }) });
+    replyAttempts.delete(conversationId); drafts.delete(conversationId);
+    if (state.selectedId === conversationId) input.value = "";
+    show($("reply-status"), "Sent"); await selectConversation(conversationId, false);
     const result = await api<{ conversations: ConversationSummary[] }>("/api/admin/conversations"); state.conversations = result.conversations || []; renderList();
   } catch (error) { handleError(error, $("reply-status")); }
-  finally { button.disabled = false; }
+  finally {
+    sending.delete(conversationId);
+    if (state.selectedId === conversationId) { button.disabled = false; input.disabled = false; }
+  }
 }
 
 async function toggleStatus() {
@@ -290,10 +403,47 @@ function confirmDelete() {
   confirmDialog("Delete conversation?", "This permanently deletes the local conversation and messages. Copies already sent to Telegram are not deleted.", "Delete", async () => {
     try {
       await api<{ ok: true }>(`/api/admin/conversations/${encodeURIComponent(conversationId)}`, { method: "DELETE" });
-      state.selectedId = null; state.conversation = null; document.body.classList.remove("thread-open");
-      $("active-thread").hidden = true; $("empty-thread").hidden = false; await refresh();
+      drafts.delete(conversationId); replyAttempts.delete(conversationId); resetThread(); await refresh();
     } catch (error) { handleError(error, $("thread-error")); }
   });
+}
+
+async function setBlocked(blocked: boolean) {
+  if (!state.selectedId) return;
+  const id = state.selectedId;
+  $<HTMLButtonElement>("block-button").disabled = true;
+  try {
+    await api(`/api/admin/conversations/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ blocked }) });
+    await refresh();
+  } catch (error) { handleError(error, $("thread-error")); }
+  finally { $<HTMLButtonElement>("block-button").disabled = false; }
+}
+
+function toggleBlocked() {
+  if (!state.conversation) return;
+  if (state.conversation.conversation.blocked) { void setBlocked(false); return; }
+  confirmDialog("Block visitor?", "This stops new messages from this visitor. Their existing conversation remains available.", "Block", () => setBlocked(true));
+}
+
+function schedulePoll(delay?: number) {
+  if (pollTimer !== undefined) window.clearTimeout(pollTimer);
+  pollTimer = undefined;
+  if ($("admin-view").hidden || !navigator.onLine || (document.hidden && !notificationsEnabled)) return;
+  const normalDelay = document.hidden ? 15_000 : 3_000;
+  pollTimer = window.setTimeout(() => void pollNow(), delay ?? normalDelay);
+}
+
+async function pollNow() {
+  if (pollRunning || $("admin-view").hidden || !navigator.onLine || (document.hidden && !notificationsEnabled)) { schedulePoll(); return; }
+  pollRunning = true;
+  try {
+    const succeeded = await refresh(true);
+    pollFailures = succeeded ? 0 : Math.min(pollFailures + 1, 6);
+  } finally {
+    pollRunning = false;
+    const backoff = pollFailures ? Math.min(60_000, 3_000 * 2 ** pollFailures) : undefined;
+    schedulePoll(backoff);
+  }
 }
 
 $("login-form").addEventListener("submit", async (event) => {
@@ -306,7 +456,9 @@ $("logout-button").addEventListener("click", async () => { try { await api("/api
 $("refresh-button").addEventListener("click", () => refresh());
 $("reply-form").addEventListener("submit", (event) => void submitReply(event as SubmitEvent));
 $("status-button").addEventListener("click", toggleStatus);
+$("block-button").addEventListener("click", toggleBlocked);
 $("delete-button").addEventListener("click", confirmDelete);
+$("reply").addEventListener("input", () => { if (state.selectedId) drafts.set(state.selectedId, $<HTMLTextAreaElement>("reply").value); });
 $("back-button").addEventListener("click", () => { document.body.classList.remove("thread-open"); if (state.selectedId) $("conversation-list").querySelector<HTMLElement>(`[data-id="${CSS.escape(state.selectedId)}"]`)?.focus(); });
 $("settings-button").addEventListener("click", () => {
   $<HTMLDialogElement>("settings-dialog").showModal();
@@ -337,7 +489,18 @@ $("copy-button").addEventListener("click", async () => {
   try { await navigator.clipboard.writeText(embed.value); show($("copy-status"), "Copied"); }
   catch { embed.select(); show($("copy-status"), "Select the snippet and copy it manually."); }
 });
+$("notification-button").addEventListener("click", async () => {
+  if (!("Notification" in window) || typeof Notification.requestPermission !== "function") return;
+  try {
+    if (notificationsEnabled) notificationsEnabled = false;
+    else notificationsEnabled = await Notification.requestPermission() === "granted";
+    try { localStorage.setItem("threadpost:notifications", notificationsEnabled ? "on" : "off"); } catch { /* Preference stays in memory. */ }
+  } catch { notificationsEnabled = false; }
+  renderNotificationButton(); schedulePoll(0);
+});
+document.addEventListener("visibilitychange", () => { if (!document.hidden) schedulePoll(0); else schedulePoll(); });
+window.addEventListener("focus", () => schedulePoll(0));
+window.addEventListener("online", () => { pollFailures = 0; schedulePoll(0); });
+window.addEventListener("offline", () => schedulePoll());
+loadNotificationPreference();
 loadApp();
-setInterval(() => {
-  if (!document.hidden && !$("admin-view").hidden) refresh(true);
-}, 5000);

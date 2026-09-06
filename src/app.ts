@@ -3,9 +3,11 @@ import type { Config } from "./config";
 import { Bridge } from "./bridge";
 import { AppError, hash, secret, type Conversation } from "./store";
 import type { TelegramSettings } from "./telegram-settings";
+import { conversationSource, verifyHuman } from "./abuse";
 
 const safeEqual = (a: string, b: string) => timingSafeEqual(Buffer.from(hash(a)), Buffer.from(hash(b)));
-const cleanConversation = (row: Conversation) => ({ id: row.id, name: row.name, status: row.status, createdAt: row.createdAt, updatedAt: row.updatedAt });
+const cleanConversation = (row: Conversation) => ({ id: row.id, name: row.name, status: row.status, createdAt: row.createdAt, updatedAt: row.updatedAt,
+  sourceOrigin: row.sourceOrigin || null, sourcePath: row.sourcePath || null, blocked: Boolean(row.blocked) });
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 const publicFiles: Record<string, string> = {
   "/": "index.html", "/admin": "admin.html", "/admin/": "admin.html",
@@ -51,7 +53,7 @@ function messageInput(data: Record<string, any>) {
   return { text: data.body.trim(), clientId: data.clientMessageId };
 }
 
-export function createApp(config: Config, bridge: Bridge, options: { workspaceBinding?: string; telegram?: TelegramSettings } = {}) {
+export function createApp(config: Config, bridge: Bridge, options: { workspaceBinding?: string; telegram?: TelegramSettings; verifyHuman?: typeof verifyHuman } = {}) {
   const store = bridge.store, limiter = new RateLimit();
   const ready = Promise.resolve().then(() => store.bindWorkspace(
     options.workspaceBinding || `${config.siteId}:${config.connector}:${config.telegramChatId}:${config.telegramToken.split(":")[0]}`
@@ -60,6 +62,9 @@ export function createApp(config: Config, bridge: Bridge, options: { workspaceBi
   const cookie = (token: string, age: number) => `threadpost_session=${token}; HttpOnly; SameSite=Strict; Path=/api/admin; Max-Age=${age}${config.publicUrl.startsWith("https:") ? "; Secure" : ""}`;
   const sessionKey = (request: Request) => hash(request.headers.get("cookie")?.match(/(?:^|;\s*)threadpost_session=([^;]+)/)?.[1] || "");
   const originAllowed = (request: Request) => !request.headers.has("origin") || config.origins.includes(request.headers.get("origin")!);
+  async function quota(key: string, max: number, periodMs: number, message: string) {
+    if (!await store.consumeQuota(hash(`${config.adminToken}:${key}`), max, periodMs)) throw new AppError(429, message);
+  }
   function admin(request: Request) {
     const key = sessionKey(request), expiry = sessions.get(key);
     if (!expiry || expiry < Date.now()) { sessions.delete(key); throw new AppError(401, "Sign in to continue."); }
@@ -73,6 +78,12 @@ export function createApp(config: Config, bridge: Bridge, options: { workspaceBi
     let response: Response;
     try {
       if (path === "/healthz" && request.method === "GET") response = json({ ok: true });
+      else if (path === "/api/widget-config" && ["GET", "OPTIONS"].includes(request.method)) {
+        if (!originAllowed(request)) throw new AppError(403, "This website is not allowed to use this inbox.");
+        if (url.searchParams.get("siteId") !== config.siteId) throw new AppError(404, "Site not found.");
+        response = request.method === "OPTIONS" ? new Response(null, { status: 204 })
+          : json({ siteId: config.siteId, turnstileSiteKey: config.turnstileSiteKey || null });
+      }
       else if (path === "/webhooks/telegram" && request.method === "POST") {
         if (config.connector !== "telegram" || !safeEqual(request.headers.get("x-telegram-bot-api-secret-token") || "", config.webhookSecret))
           throw new AppError(401, "Invalid webhook signature.");
@@ -80,6 +91,7 @@ export function createApp(config: Config, bridge: Bridge, options: { workspaceBi
       } else if (path === "/api/admin/login" && request.method === "POST") {
         if (request.headers.get("origin") !== config.publicUrl) throw new AppError(403, "Invalid origin.");
         if (!limiter.allow(`login:${ip}`, 10)) throw new AppError(429, "Too many attempts. Try again in a minute.");
+        await quota(`login:${ip}`, 10, 60_000, "Too many attempts. Try again in a minute.");
         const data = await body(request);
         if (typeof data.token !== "string" || !safeEqual(data.token, config.adminToken)) throw new AppError(401, "Incorrect operator token.");
         for (const [key, until] of sessions) if (until < Date.now()) sessions.delete(key);
@@ -94,6 +106,7 @@ export function createApp(config: Config, bridge: Bridge, options: { workspaceBi
           if (!options.telegram) throw new AppError(503, "Telegram setup is unavailable in this host.");
           if (request.method === "GET") response = json(await options.telegram.status());
           else if (request.method === "POST") {
+            await quota("telegram-setup", 5, 60_000, "Too many setup attempts. Try again in a minute.");
             const data = await body(request);
             if (typeof data.botToken !== "string" || typeof data.chatId !== "string"
               || !Array.isArray(data.operatorIds) || data.operatorIds.some((id: unknown) => typeof id !== "string"))
@@ -116,8 +129,13 @@ export function createApp(config: Config, bridge: Bridge, options: { workspaceBi
               const input = messageInput(await body(request)); response = json(await store.add(id, "outbound", input.text, input.clientId));
             } else if (request.method === "PATCH" && !conversation[2]) {
               const data = await body(request);
-              if (!["open", "closed"].includes(data.status)) throw new AppError(400, "Invalid conversation status.");
-              response = json(cleanConversation(await store.setStatus(id, data.status)));
+              if (typeof data.blocked === "boolean") {
+                if (bridge.busy) throw new AppError(409, "Delivery is in progress. Try again shortly.");
+                response = json(cleanConversation(await store.setBlocked(id, data.blocked)));
+              } else {
+                if (!["open", "closed"].includes(data.status)) throw new AppError(400, "Invalid conversation status.");
+                response = json(cleanConversation(await store.setStatus(id, data.status)));
+              }
             } else if (request.method === "DELETE" && !conversation[2]) {
               if (bridge.busy) throw new AppError(409, "Delivery is in progress. Try deletion again shortly.");
               await store.delete(id); response = json({ ok: true });
@@ -128,21 +146,50 @@ export function createApp(config: Config, bridge: Bridge, options: { workspaceBi
         if (!originAllowed(request)) throw new AppError(403, "This website is not allowed to use this inbox.");
         if (request.method === "OPTIONS") response = new Response(null, { status: 204 });
         else if (path === "/api/conversations" && request.method === "POST") {
-          if (!limiter.allow(`start:${ip}`, 5)) throw new AppError(429, "Too many new conversations. Try again in a minute.");
+          if (!limiter.allow(`start:${ip}`, 20)) throw new AppError(429, "Too many attempts. Try again in a minute.");
           const data = await body(request);
           if (data.siteId !== config.siteId) throw new AppError(404, "Site not found.");
           if (data.name != null && (typeof data.name !== "string" || data.name.length > 80)) throw new AppError(400, "Name must be at most 80 characters.");
           if (data.clientToken != null && (typeof data.clientToken !== "string" || !/^[a-zA-Z0-9_-]{43}$/.test(data.clientToken)))
             throw new AppError(400, "clientToken must be a random 32-byte base64url secret.");
-          response = json(await store.create((data.name || "").trim(), data.clientToken), 201);
+          const existing = data.clientToken ? await store.findByToken(data.clientToken) : null;
+          if (existing) {
+            await store.authenticate(existing.id, data.clientToken);
+            if (existing.sourceOrigin && request.headers.get("origin") && existing.sourceOrigin !== request.headers.get("origin"))
+              throw new AppError(403, "This chat belongs to another website.");
+            if (existing.blocked) throw new AppError(403, "This conversation is blocked.");
+            response = json({ id: existing.id, token: data.clientToken, status: existing.status }, 201);
+          } else {
+            await quota(`start:${ip}`, 5, 60_000, "Too many new conversations. Try again in a minute.");
+            await (options.verifyHuman || verifyHuman)(config, data.turnstileToken, request.headers.get("origin"), ip);
+            await quota(`start-day:${ip}`, 20, 86_400_000, "Too many new conversations today. Try again later.");
+            await quota("start-day:workspace", config.maxNewConversationsPerDay || 200, 86_400_000, "This inbox has reached its daily conversation limit.");
+            response = json(await store.create((data.name || "").trim(), data.clientToken, conversationSource(request, data.pageUrl)), 201);
+          }
         } else {
-          const match = path.match(/^\/api\/conversations\/([a-zA-Z0-9-]+)\/messages$/);
+          const match = path.match(/^\/api\/conversations\/([a-zA-Z0-9-]+)(\/messages)?$/);
           if (!match) throw new AppError(404, "Not found.");
+          if (!limiter.allow(`visitor:${ip}`, 240)) throw new AppError(429, "Too many requests. Try again in a minute.");
           const row = await store.authenticate(match[1], request.headers.get("authorization")?.replace(/^Bearer /, "") || "");
-          if (request.method === "GET") response = json({ conversation: cleanConversation(row), messages: await store.messages(row.id) });
-          else if (request.method === "POST") {
-            if (!limiter.allow(`message:${row.id}`, 30)) throw new AppError(429, "Too many messages. Try again in a minute.");
-            const input = messageInput(await body(request)); response = json(await store.add(row.id, "inbound", input.text, input.clientId), 201);
+          if (row.sourceOrigin && request.headers.get("origin") && row.sourceOrigin !== request.headers.get("origin"))
+            throw new AppError(403, "This chat belongs to another website.");
+          if (request.method === "DELETE" && !match[2]) {
+            if (bridge.busy) throw new AppError(409, "Delivery is in progress. Try again shortly.");
+            await store.delete(row.id); response = json({ ok: true });
+          } else if (request.method === "GET" && match[2]) response = json({ conversation: cleanConversation(row), messages: await store.messages(row.id) });
+          else if (request.method === "POST" && match[2]) {
+            if (row.blocked) throw new AppError(403, "This conversation is blocked.");
+            const input = messageInput(await body(request));
+            const old = await store.findMessage(row.id, "inbound", input.clientId);
+            if (old) {
+              if (old.body !== input.text) throw new AppError(409, "This message ID was already used for different text.");
+              response = json(old, 201);
+            } else {
+              await quota(`message:${row.id}`, 30, 60_000, "Too many messages. Try again in a minute.");
+              await quota(`message-ip:${ip}`, 120, 60_000, "Too many messages. Try again in a minute.");
+              await quota("message-day:workspace", config.maxMessagesPerDay || 5000, 86_400_000, "This inbox has reached its daily message limit.");
+              response = json(await store.add(row.id, "inbound", input.text, input.clientId), 201);
+            }
           } else throw new AppError(405, "Method not allowed.");
         }
       } else if (request.method === "GET" && publicFiles[path]) {
@@ -156,14 +203,16 @@ export function createApp(config: Config, bridge: Bridge, options: { workspaceBi
     response.headers.set("X-Content-Type-Options", "nosniff");
     response.headers.set("Referrer-Policy", "no-referrer");
     response.headers.set("Cache-Control", "no-store");
-    if (path.startsWith("/api/conversations") && request.headers.get("origin") && originAllowed(request)) {
+    if (response.status === 429) response.headers.set("Retry-After", "60");
+    if ((path.startsWith("/api/conversations") || path === "/api/widget-config") && request.headers.get("origin") && originAllowed(request)) {
       response.headers.set("Access-Control-Allow-Origin", request.headers.get("origin")!);
       response.headers.set("Vary", "Origin");
       response.headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
-      response.headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      response.headers.set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+      response.headers.set("Access-Control-Expose-Headers", "Retry-After");
     }
     if (path === "/" || path.startsWith("/admin")) {
-      response.headers.set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+      response.headers.set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://challenges.cloudflare.com; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
       response.headers.set("X-Frame-Options", "DENY");
     }
     return response;

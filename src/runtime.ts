@@ -22,7 +22,7 @@ export function createRuntimeHandler(options: {
       ? request.headers.get("x-threadpost-client-ip") || "unknown"
       : directIp;
     const response = await options.handler(request, ip);
-    if (options.useD1 && request.method !== "OPTIONS") {
+    if (options.useD1 && response.ok && request.method !== "OPTIONS") {
       try { await options.bridge.flush(); }
       catch { onFlushError(); }
     }

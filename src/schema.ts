@@ -2,7 +2,8 @@ export const schemaStatements = [
   `CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open',
     token_hash TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-    expires_at TEXT NOT NULL, thread_id TEXT UNIQUE, thread_state TEXT NOT NULL DEFAULT 'pending'
+    expires_at TEXT NOT NULL, thread_id TEXT UNIQUE, thread_state TEXT NOT NULL DEFAULT 'pending',
+    source_origin TEXT, source_path TEXT, blocked INTEGER NOT NULL DEFAULT 0
   )`,
   `CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
@@ -20,6 +21,10 @@ export const schemaStatements = [
   `INSERT OR IGNORE INTO connector_events (connector,event_id,created_at)
     SELECT 'telegram',cast(id AS TEXT),created_at FROM telegram_updates`,
   `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS rate_limits (
+    key TEXT PRIMARY KEY, window_start INTEGER NOT NULL, expires_at INTEGER NOT NULL, count INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS rate_limits_expiry ON rate_limits(expires_at)`,
 ] as const;
 
 export const recoveryStatements = [

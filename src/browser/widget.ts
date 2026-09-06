@@ -2,16 +2,18 @@
   "use strict";
 
   interface Session { id: string; token: string }
-  interface Conversation { id: string; status: "open" | "closed"; name?: string; createdAt?: string }
+  interface Conversation { id: string; status: "open" | "closed"; name?: string; createdAt?: string; blocked?: boolean }
   interface Message {
     id: number;
+    clientMessageId?: string;
     direction: "inbound" | "outbound";
     body: string;
     createdAt: string;
     deliveryStatus: "pending" | "sending" | "sent" | "failed" | "unknown";
   }
   interface ConversationCreated { id: string; token: string; status?: "open" | "closed" }
-  interface ThreadResponse { conversation: Conversation; messages: Message[] }
+  interface ThreadResponse { conversation: Conversation; messages: Message[]; blocked?: boolean }
+  interface WidgetConfig { siteId: string; turnstileSiteKey: string | null }
   interface PendingMessage {
     body: string;
     clientMessageId: string;
@@ -46,6 +48,7 @@
   const position = script.dataset.position === "left" ? "left" : "right";
   const apiBase = new URL(".", script.src).href.replace(/\/$/, "");
   const storageKey = `threadpost:${apiBase}:${siteId}`;
+  const notificationPreferenceKey = `${storageKey}:notifications`;
   const host = document.createElement("div");
   host.id = "threadpost-widget";
   document.body.appendChild(host);
@@ -59,10 +62,15 @@
     .tp { --ink:#191713; --ivory:#fffaf0; --paper:#fffdf8; --orange:#e4572e; --accent-border:#a83b1c; --accent-bubble-border:#d24a25; --accent-hover:#c94721; --accent-foreground:white; --line:#d8d0c2; font: 15px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--ink); }
     .launcher { position:fixed; z-index:2147483000; right:20px; bottom:20px; min-height:52px; padding:0 19px; border:1px solid var(--accent-border); border-radius:999px; background:var(--orange); color:var(--accent-foreground); font-weight:750; cursor:pointer; box-shadow:0 12px 30px #20140726; }
     .launcher:hover { background:var(--accent-hover); }
+    .badge { position:absolute; top:-7px; right:-7px; min-width:22px; height:22px; padding:0 6px; display:grid; place-items:center; border:2px solid white; border-radius:999px; background:#b42318; color:white; font-size:12px; line-height:1; }
+    .badge[hidden] { display:none; }
     button:focus-visible, input:focus-visible, textarea:focus-visible { outline:3px solid #f4a261; outline-offset:2px; }
     .panel { position:fixed; z-index:2147483000; right:20px; bottom:84px; width:min(390px,calc(100vw - 24px)); height:min(610px,calc(100dvh - 108px)); display:grid; grid-template-rows:auto 1fr auto; overflow:hidden; border:1px solid var(--line); border-radius:18px; background:var(--paper); box-shadow:0 24px 70px #20140730; }
     .panel[hidden], .launcher[hidden] { display:none; }
     .head { display:flex; align-items:center; justify-content:space-between; padding:17px 18px; border-bottom:1px solid var(--line); background:var(--ivory); }
+    .head-actions { display:flex; align-items:center; gap:4px; }
+    .notify, .delete { padding:6px 8px; border:0; border-radius:7px; background:transparent; color:#625d55; font-size:12px; cursor:pointer; }
+    .notify:hover, .delete:hover { background:#eee7da; }
     .heading { margin:0; font:750 17px/1.2 ui-serif,Georgia,serif; }
     .close { width:36px; height:36px; border:0; border-radius:50%; background:transparent; color:var(--ink); font-size:24px; line-height:1; cursor:pointer; }
     .close:hover { background:#eee7da; }
@@ -84,9 +92,12 @@
     .send:disabled { cursor:not-allowed; opacity:.55; }
     .error, .count { margin:7px 2px 0; font-size:12px; }
     .error { color:#a22818; }
+    .config-retry { margin:6px 2px 0; padding:0; border:0; border-bottom:1px solid currentColor; background:transparent; color:#a22818; cursor:pointer; }
+    .turnstile { margin:0 0 9px; min-height:0; }
     .count { color:#777168; text-align:right; }
     .closed { padding:15px; border-top:1px solid var(--line); background:var(--ivory); text-align:center; }
     .closed p { margin:0 0 10px; color:#625d55; }
+    .blocked p { margin-bottom:0; }
     .new { padding:9px 13px; border:1px solid var(--ink); border-radius:8px; background:var(--ink); color:white; font-weight:700; cursor:pointer; }
     .tp[data-position="left"] .launcher { right:auto; left:20px; }
     .tp[data-position="left"] .panel { right:auto; left:20px; }
@@ -116,6 +127,10 @@
   launcher.type = "button";
   launcher.setAttribute("aria-expanded", "false");
   launcher.setAttribute("aria-controls", "threadpost-panel");
+  const badge = el("span", "badge");
+  badge.hidden = true;
+  badge.setAttribute("aria-label", "Unread replies");
+  launcher.appendChild(badge);
   const panel = el("section", "panel");
   panel.id = "threadpost-panel";
   panel.hidden = true;
@@ -128,7 +143,14 @@
   const close = el("button", "close", "×");
   close.type = "button";
   close.setAttribute("aria-label", "Close chat");
-  head.append(heading, close);
+  const headActions = el("div", "head-actions");
+  const notifyButton = el("button", "notify", "Enable notifications");
+  notifyButton.type = "button";
+  const deleteButton = el("button", "delete", "Delete chat");
+  deleteButton.type = "button";
+  deleteButton.hidden = true;
+  headActions.append(notifyButton, deleteButton, close);
+  head.append(heading, headActions);
   const messages = el("div", "messages");
   messages.setAttribute("role", "log");
   messages.setAttribute("aria-live", "polite");
@@ -136,6 +158,8 @@
   const empty = el("p", "empty", greeting);
   messages.appendChild(empty);
   const composer = el("form", "composer");
+  const turnstileContainer = el("div", "turnstile");
+  turnstileContainer.hidden = true;
   const nameInput = el("input", "name");
   nameInput.type = "text";
   nameInput.name = "name";
@@ -155,16 +179,22 @@
   const error = el("p", "error");
   error.setAttribute("role", "alert");
   error.hidden = true;
+  const configRetry = el("button", "config-retry", "Retry setup");
+  configRetry.type = "button";
+  configRetry.hidden = true;
   const count = el("div", "count", "0 / 2000");
   row.append(textarea, send);
-  composer.append(nameInput, row, error, count);
+  composer.append(turnstileContainer, nameInput, row, error, configRetry, count);
   const closed = el("div", "closed");
   closed.hidden = true;
   closed.appendChild(el("p", "", "This conversation is closed. Start a new one to get in touch."));
   const newButton = el("button", "new", "New conversation");
   newButton.type = "button";
   closed.appendChild(newButton);
-  panel.append(head, messages, composer, closed);
+  const blocked = el("div", "closed blocked");
+  blocked.hidden = true;
+  blocked.appendChild(el("p", "", "This conversation has been blocked."));
+  panel.append(head, messages, composer, closed, blocked);
   wrap.append(launcher, panel);
   root.appendChild(wrap);
 
@@ -172,12 +202,27 @@
   let status: "open" | "closed" = "open";
   let pollTimer = 0;
   let polling = false;
+  let pollFailures = 0;
   let pending: PendingMessage | null = null;
+  let unread = 0;
+  let configState: "unknown" | "loading" | "ready" | "error" = "unknown";
+  let widgetConfig: WidgetConfig | null = null;
+  let turnstileToken = "";
+  let turnstileWidgetId: string | number | null = null;
+  let messagesInitialized = false;
+  let highestMessageId = 0;
+  let notificationsEnabled = readNotificationPreference();
+  const renderedMessages = new Map<number, Message>();
 
   nameInput.hidden = Boolean(session);
+  deleteButton.hidden = !session;
+  syncSendDisabled();
   launcher.addEventListener("click", openPanel);
   close.addEventListener("click", closePanel);
   newButton.addEventListener("click", newConversation);
+  notifyButton.addEventListener("click", enableNotifications);
+  deleteButton.addEventListener("click", deleteConversation);
+  configRetry.addEventListener("click", loadWidgetConfig);
   composer.addEventListener("submit", onSubmit);
   textarea.addEventListener("input", () => {
     count.textContent = `${textarea.value.length} / 2000`;
@@ -194,7 +239,12 @@
   panel.addEventListener("keydown", (event: KeyboardEvent) => {
     if (event.key === "Escape") closePanel();
   });
-  document.addEventListener("visibilitychange", updatePolling);
+  document.addEventListener("visibilitychange", () => document.hidden ? updatePolling() : resumePolling());
+  window.addEventListener("focus", resumePolling);
+  window.addEventListener("online", resumePolling);
+  window.addEventListener("offline", updatePolling);
+  updateNotificationButton();
+  updatePolling();
 
   function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text?: string): HTMLElementTagNameMap[K] {
     const node = document.createElement(tag);
@@ -241,19 +291,27 @@
   function saveSession(value: Session): void {
     session = value;
     try { localStorage.setItem(storageKey, JSON.stringify(value)); } catch (_) {}
+    deleteButton.hidden = false;
   }
 
   function clearSession() {
     session = null;
     try { localStorage.removeItem(storageKey); } catch (_) {}
+    deleteButton.hidden = true;
+    messagesInitialized = false;
+    highestMessageId = 0;
+    renderedMessages.clear();
+    unread = 0;
+    updateBadge();
   }
 
   function openPanel() {
     panel.hidden = false;
     launcher.hidden = true;
     launcher.setAttribute("aria-expanded", "true");
-    updatePolling();
-    if (session) loadMessages();
+    markRead();
+    if (configState === "unknown") loadWidgetConfig();
+    resumePolling();
     requestAnimationFrame(() => (session ? textarea : nameInput).focus());
   }
 
@@ -268,16 +326,24 @@
   function updatePolling() {
     window.clearTimeout(pollTimer);
     pollTimer = 0;
-    if (!panel.hidden && !document.hidden && session && status === "open") {
-      pollTimer = window.setTimeout(async () => {
-        await loadMessages();
-        updatePolling();
-      }, 3000);
-    }
+    if (!session || !navigator.onLine || polling) return;
+    const baseDelay = !panel.hidden && !document.hidden ? 3000 : 15000;
+    const delay = Math.min(60000, baseDelay * (2 ** pollFailures));
+    pollTimer = window.setTimeout(loadMessages, delay);
+  }
+
+  function resumePolling() {
+    window.clearTimeout(pollTimer);
+    pollTimer = 0;
+    if (session && navigator.onLine && !polling) void loadMessages();
+    else updatePolling();
   }
 
   async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-    const response = await fetch(`${apiBase}${path}`, options);
+    const response = await fetch(`${apiBase}${path}`, {
+      ...options,
+      signal: options.signal || AbortSignal.timeout(15000)
+    });
     let data = null;
     try { data = await response.json(); } catch (_) {}
     if (!response.ok) {
@@ -289,10 +355,109 @@
     return data as T;
   }
 
+  async function loadWidgetConfig(): Promise<void> {
+    if (configState === "loading" || configState === "ready") return;
+    configState = "loading";
+    configRetry.hidden = true;
+    clearError();
+    syncSendDisabled();
+    try {
+      const config = await api<WidgetConfig>(`/api/widget-config?siteId=${encodeURIComponent(siteId)}`);
+      if (config.siteId !== siteId || (config.turnstileSiteKey !== null && typeof config.turnstileSiteKey !== "string")) {
+        throw new Error("Invalid widget configuration.");
+      }
+      widgetConfig = config;
+      configState = "ready";
+      if (config.turnstileSiteKey && !session) await mountTurnstile(config.turnstileSiteKey);
+    } catch (_) {
+      configState = "error";
+      widgetConfig = null;
+      showError("Chat setup could not be loaded. Please try again.");
+      configRetry.hidden = false;
+    } finally {
+      syncSendDisabled();
+    }
+  }
+
+  async function mountTurnstile(siteKey: string): Promise<void> {
+    turnstileContainer.hidden = false;
+    try {
+      await loadTurnstileScript();
+      const turnstile = (window as unknown as { turnstile?: {
+        render(target: HTMLElement, options: Record<string, unknown>): string | number;
+        reset(id: string | number): void;
+      } }).turnstile;
+      if (!turnstile) throw new Error("Turnstile did not load.");
+      if (turnstileWidgetId === null) {
+        turnstileWidgetId = turnstile.render(turnstileContainer, {
+          sitekey: siteKey,
+          action: "start_chat",
+          callback: (token: string) => { turnstileToken = token.length <= 2048 ? token : ""; challengeChanged(); },
+          "expired-callback": () => { turnstileToken = ""; challengeChanged(); },
+          "error-callback": () => { turnstileToken = ""; showError("Verification failed. Please try again."); challengeChanged(); }
+        });
+      }
+    } catch (_) {
+      configState = "error";
+      showError("Verification could not be loaded. Please try again.");
+      configRetry.hidden = false;
+    }
+  }
+
+  function loadTurnstileScript(): Promise<void> {
+    const existing = document.querySelector<HTMLScriptElement>('script[data-threadpost-turnstile="true"]');
+    if ((window as unknown as { turnstile?: unknown }).turnstile) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const challengeScript = existing || document.createElement("script");
+      let settled = false;
+      const finish = (problem?: Error) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
+        challengeScript.removeEventListener("load", loaded);
+        challengeScript.removeEventListener("error", failed);
+        if (problem) {
+          challengeScript.remove();
+          reject(problem);
+        } else resolve();
+      };
+      const loaded = () => finish();
+      const failed = () => finish(new Error("Turnstile failed to load."));
+      const timeout = window.setTimeout(() => finish(new Error("Turnstile timed out.")), 15000);
+      challengeScript.addEventListener("load", loaded, { once: true });
+      challengeScript.addEventListener("error", failed, { once: true });
+      if (!existing) {
+        challengeScript.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+        challengeScript.async = true;
+        challengeScript.defer = true;
+        challengeScript.dataset.threadpostTurnstile = "true";
+        document.head.appendChild(challengeScript);
+      }
+    });
+  }
+
+  function resetTurnstile(): void {
+    turnstileToken = "";
+    const turnstile = (window as unknown as { turnstile?: { reset(id: string | number): void } }).turnstile;
+    if (turnstile && turnstileWidgetId !== null) turnstile.reset(turnstileWidgetId);
+    syncSendDisabled();
+  }
+
+  function challengeChanged(): void {
+    syncSendDisabled();
+    if (pending?.failed) renderPending();
+  }
+
+  function syncSendDisabled(): void {
+    const needsChallenge = !session && Boolean(widgetConfig?.turnstileSiteKey) && !turnstileToken;
+    send.disabled = Boolean(pending?.sending) || configState !== "ready" || needsChallenge;
+    deleteButton.disabled = Boolean(pending?.sending);
+  }
+
   async function onSubmit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     const body = textarea.value.trim();
-    if (!body || body.length > 2000 || pending || status === "closed") return;
+    if (!body || body.length > 2000 || pending || status === "closed" || blocked.hidden === false || configState !== "ready" || (!session && Boolean(widgetConfig?.turnstileSiteKey) && !turnstileToken)) return;
     textarea.value = "";
     textarea.dispatchEvent(new Event("input"));
     const clientToken = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -303,9 +468,10 @@
 
   async function deliverPending() {
     if (!pending || pending.sending) return;
+    if (pending.phase === "create" && widgetConfig?.turnstileSiteKey && !turnstileToken) return;
     pending.sending = true;
     pending.failed = false;
-    send.disabled = true;
+    syncSendDisabled();
     clearError();
     renderPending();
     try {
@@ -313,11 +479,13 @@
         const created = await api<ConversationCreated>("/api/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ siteId, name: nameInput.value.trim() || undefined, clientToken: pending.clientToken })
+          body: JSON.stringify({ siteId, name: nameInput.value.trim() || undefined, clientToken: pending.clientToken, pageUrl: location.origin + location.pathname, turnstileToken: turnstileToken || undefined })
         });
         saveSession({ id: created.id, token: created.token });
         status = created.status || "open";
         nameInput.hidden = true;
+        turnstileContainer.hidden = true;
+        turnstileToken = "";
         pending.phase = "send";
       }
       const activeSession = session;
@@ -328,22 +496,29 @@
         body: JSON.stringify({ body: pending.body, clientMessageId: pending.clientMessageId })
       });
       pending = null;
-      renderMessages([sent]);
+      upsertMessages([sent], false);
       await loadMessages();
     } catch (problem) {
       if (problem instanceof ApiError && (problem.status === 401 || problem.status === 404)) {
         clearSession();
+        status = "open";
         nameInput.hidden = false;
-        if (pending) pending.phase = "create";
+        setConversationState(false, false);
+        if (pending) {
+          pending.phase = "create";
+          renderMessages([]);
+          prepareChallenge();
+        }
       }
       if (pending) {
+        if (pending.phase === "create" && widgetConfig?.turnstileSiteKey) resetTurnstile();
         pending.failed = true;
         pending.sending = false;
       }
       showError(problem instanceof Error ? problem.message : "Could not send. Please try again.");
       renderPending();
     } finally {
-      send.disabled = Boolean(pending);
+      syncSendDisabled();
       updatePolling();
     }
   }
@@ -357,32 +532,92 @@
         headers: { Authorization: `Bearer ${requestedSession.token}` }
       });
       if (session !== requestedSession) return;
+      pollFailures = 0;
       status = data.conversation.status;
-      renderMessages(data.messages || []);
-      setClosed(status === "closed");
+      const activePending = pending;
+      if (activePending?.phase === "send" && data.messages.some((message) =>
+        message.clientMessageId === activePending.clientMessageId && message.body === activePending.body
+      )) {
+        pending = null;
+        messages.querySelector('[data-pending="true"]')?.remove();
+        syncSendDisabled();
+      }
+      const isInitialHistory = !messagesInitialized;
+      upsertMessages(data.messages || [], !isInitialHistory);
+      if (isInitialHistory) {
+        messagesInitialized = true;
+        const watermark = readWatermark();
+        if (!panel.hidden && !document.hidden && document.hasFocus()) {
+          markRead();
+        } else if (watermark > 0) {
+          unread = data.messages.filter((message) => message.direction === "outbound" && message.id > watermark).length;
+          updateBadge();
+        } else {
+          writeWatermark(highestMessageId);
+        }
+      }
+      setConversationState(status === "closed", Boolean(data.blocked ?? data.conversation.blocked));
       clearError();
     } catch (problem) {
       if (session !== requestedSession) return;
       if (problem instanceof ApiError && (problem.status === 401 || problem.status === 404)) {
         clearSession();
         nameInput.hidden = false;
+        setConversationState(false, false);
+        renderMessages([]);
         showError("This chat session expired. Send a message to start again.");
-      }
+        syncSendDisabled();
+        prepareChallenge();
+      } else pollFailures += 1;
     } finally {
       polling = false;
+      updatePolling();
     }
   }
 
   function renderMessages(list: Message[]): void {
     messages.replaceChildren();
+    renderedMessages.clear();
     if (!list.length && !pending) messages.appendChild(empty);
-    list.forEach((message) => messages.appendChild(messageNode(message)));
+    list.forEach((message) => {
+      renderedMessages.set(message.id, message);
+      messages.appendChild(messageNode(message));
+      highestMessageId = Math.max(highestMessageId, message.id);
+    });
     if (pending) messages.appendChild(pendingNode());
     messages.scrollTop = messages.scrollHeight;
   }
 
+  function upsertMessages(list: Message[], announceReplies: boolean): void {
+    const wasNearBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 48;
+    empty.remove();
+    if (!pending) messages.querySelector('[data-pending="true"]')?.remove();
+    const pendingElement = messages.querySelector('[data-pending="true"]');
+    let newReplies = 0;
+    for (const message of list) {
+      const previous = renderedMessages.get(message.id);
+      if (previous) {
+        if (JSON.stringify(previous) !== JSON.stringify(message)) {
+          const existing = messages.querySelector<HTMLElement>(`[data-message-id="${message.id}"]`);
+          if (existing) existing.replaceWith(messageNode(message));
+          renderedMessages.set(message.id, message);
+        }
+        continue;
+      }
+      renderedMessages.set(message.id, message);
+      const node = messageNode(message);
+      messages.insertBefore(node, pendingElement);
+      if (announceReplies && message.direction === "outbound" && message.id > readWatermark()) newReplies += 1;
+      highestMessageId = Math.max(highestMessageId, message.id);
+    }
+    if (!renderedMessages.size && !pending) messages.appendChild(empty);
+    if (newReplies) handleNewReplies(newReplies);
+    if (wasNearBottom) messages.scrollTop = messages.scrollHeight;
+  }
+
   function messageNode(message: Message): HTMLElement {
     const item = el("article", `message ${message.direction === "outbound" ? "outbound" : "inbound"}`);
+    item.dataset.messageId = String(message.id);
     item.appendChild(el("p", "bubble", String(message.body || "")));
     const state = message.deliveryStatus && message.deliveryStatus !== "sent" ? ` · ${message.deliveryStatus}` : "";
     item.appendChild(el("p", "meta", `${message.direction === "outbound" ? "Threadpost" : "You"}${state}`));
@@ -398,6 +633,7 @@
     if (pending.failed) {
       const retry = el("button", "retry", "Try again");
       retry.type = "button";
+      retry.disabled = pending.phase === "create" && Boolean(widgetConfig?.turnstileSiteKey) && !turnstileToken;
       retry.addEventListener("click", deliverPending);
       item.appendChild(retry);
     }
@@ -408,13 +644,13 @@
     const previous = messages.querySelector('[data-pending="true"]');
     if (previous) previous.remove();
     if (pending) messages.appendChild(pendingNode());
-    messages.scrollTop = messages.scrollHeight;
+    if (!panel.hidden) messages.scrollTop = messages.scrollHeight;
   }
 
-  function setClosed(isClosed: boolean): void {
-    composer.hidden = isClosed;
-    closed.hidden = !isClosed;
-    if (isClosed) window.clearTimeout(pollTimer);
+  function setConversationState(isClosed: boolean, isBlocked: boolean): void {
+    composer.hidden = isClosed || isBlocked;
+    closed.hidden = !isClosed || isBlocked;
+    blocked.hidden = !isBlocked;
   }
 
   function newConversation() {
@@ -423,10 +659,154 @@
     pending = null;
     nameInput.value = "";
     nameInput.hidden = false;
-    setClosed(false);
+    setConversationState(false, false);
     renderMessages([]);
     clearError();
+    syncSendDisabled();
+    prepareChallenge();
     nameInput.focus();
+  }
+
+  function prepareChallenge(): void {
+    const siteKey = widgetConfig?.turnstileSiteKey;
+    if (!siteKey) return;
+    turnstileContainer.hidden = false;
+    if (turnstileWidgetId !== null) resetTurnstile();
+    else void mountTurnstile(siteKey).finally(syncSendDisabled);
+  }
+
+  function watermarkKey(): string | null {
+    return session ? `${storageKey}:read:${session.id}` : null;
+  }
+
+  function readWatermark(): number {
+    const key = watermarkKey();
+    if (!key) return 0;
+    try {
+      const value = Number(localStorage.getItem(key));
+      return Number.isSafeInteger(value) && value > 0 ? value : 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  function markRead(): void {
+    unread = 0;
+    updateBadge();
+    writeWatermark(highestMessageId);
+  }
+
+  function writeWatermark(messageId: number): void {
+    const key = watermarkKey();
+    if (!key || messageId <= 0) return;
+    try { localStorage.setItem(key, String(messageId)); } catch (_) {}
+  }
+
+  function handleNewReplies(count: number): void {
+    if (!panel.hidden && !document.hidden && document.hasFocus()) {
+      markRead();
+      return;
+    }
+    unread += count;
+    updateBadge();
+    if (notificationsEnabled && notificationPermission() === "granted") {
+      try { new Notification(title, { body: "You have a new reply." }); } catch (_) {}
+    }
+  }
+
+  function updateBadge(): void {
+    badge.hidden = unread === 0;
+    badge.textContent = unread > 99 ? "99+" : String(unread);
+    launcher.setAttribute("aria-label", unread ? `${title}, ${unread} unread ${unread === 1 ? "reply" : "replies"}` : title);
+  }
+
+  function updateNotificationButton(): void {
+    const permission = notificationPermission();
+    if (permission === null) {
+      notifyButton.hidden = true;
+      return;
+    }
+    notifyButton.hidden = false;
+    if (notificationsEnabled && permission === "granted") {
+      notifyButton.disabled = false;
+      notifyButton.textContent = "Notifications on";
+    } else {
+      notificationsEnabled = false;
+      saveNotificationPreference(false);
+      notifyButton.disabled = permission === "denied";
+      notifyButton.textContent = permission === "denied" ? "Notifications blocked" : "Enable notifications";
+    }
+  }
+
+  async function enableNotifications(): Promise<void> {
+    const currentPermission = notificationPermission();
+    if (currentPermission === null) return;
+    if (notificationsEnabled) {
+      notificationsEnabled = false;
+      saveNotificationPreference(false);
+      updateNotificationButton();
+      return;
+    }
+    try {
+      const permission = currentPermission === "granted"
+        ? "granted"
+        : await Notification.requestPermission();
+      notificationsEnabled = permission === "granted";
+      saveNotificationPreference(notificationsEnabled);
+    } catch (_) {
+      notificationsEnabled = false;
+      saveNotificationPreference(false);
+    }
+    updateNotificationButton();
+  }
+
+  function notificationPermission(): NotificationPermission | null {
+    try { return "Notification" in window ? Notification.permission : null; } catch (_) { return null; }
+  }
+
+  function readNotificationPreference(): boolean {
+    try { return localStorage.getItem(notificationPreferenceKey) === "true"; } catch (_) { return false; }
+  }
+
+  function saveNotificationPreference(enabled: boolean): void {
+    try { localStorage.setItem(notificationPreferenceKey, enabled ? "true" : "false"); } catch (_) {}
+  }
+
+  async function deleteConversation(): Promise<void> {
+    if (!session || pending?.sending || !window.confirm("Delete this conversation and its messages?")) return;
+    const requestedSession = session;
+    deleteButton.disabled = true;
+    clearError();
+    try {
+      await api<void>(`/api/conversations/${encodeURIComponent(requestedSession.id)}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${requestedSession.token}` }
+      });
+      if (session === requestedSession) resetConversation();
+    } catch (problem) {
+      if (session !== requestedSession) return;
+      if (problem instanceof ApiError && (problem.status === 401 || problem.status === 404)) {
+        resetConversation();
+      } else {
+        showError(problem instanceof Error ? problem.message : "Could not delete this conversation.");
+      }
+    } finally {
+      deleteButton.disabled = false;
+      updatePolling();
+    }
+  }
+
+  function resetConversation(): void {
+    clearSession();
+    status = "open";
+    pending = null;
+    nameInput.value = "";
+    nameInput.hidden = false;
+    setConversationState(false, false);
+    renderMessages([]);
+    clearError();
+    syncSendDisabled();
+    prepareChallenge();
   }
 
   function showError(message: string): void {

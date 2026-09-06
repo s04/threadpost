@@ -204,8 +204,8 @@ an explicit rejection can throw `DeliveryError(false)`. Never put provider
 tokens in the browser. WhatsApp requires its own adapter and platform-policy
 handling; it is not enabled by changing the connector name.
 
-The current panel displays environment-based setup; it does not edit provider
-credentials or create isolated apps. One deployment is one workspace. Multiple
+The panel supports Telegram connection setup and a widget snippet customizer.
+One deployment is one workspace. Multiple
 allowed origins share that workspace and are not tenant isolation. A future
 multi-app edition needs app-scoped conversations, credentials, routing and
 operator permissions before a shared deployment can safely host separate apps.
@@ -213,10 +213,58 @@ operator permissions before a shared deployment can safely host separate apps.
 This starter supports text only and lists the latest 200 conversations in the
 panel. Visitor credentials expire after 30 days; stored conversations are not
 automatically deleted. Operator sessions expire after eight hours or restart.
-Rate limits are per process (five new conversations per IP per minute, 30
-messages per conversation per minute). Behind a proxy, clients currently share
-the proxy IP; forwarded IP headers are deliberately not trusted. Public hosted
-use needs an abuse-control and retention design suited to its traffic.
+Persistent quotas allow five new conversations per IP per minute, 20 per IP per
+day, 30 messages per conversation per minute, and 120 messages per IP per minute.
+Workspace daily defaults are 200 new conversations and 5,000 messages; configure
+them with `MAX_NEW_CONVERSATIONS_PER_DAY` and `MAX_MESSAGES_PER_DAY`. Shared IPs
+share quotas. Cloudflare supplies the trusted client IP; arbitrary forwarded
+headers are not trusted. The Worker also limits requests before container
+startup (240 requests per IP, five starts per IP, and 1,200 workspace requests
+per minute, per Cloudflare location).
+
+## Messaging behavior and protection
+
+The widget and inbox update automatically, normally every three seconds while
+active. Background polling uses a 15-second interval, pauses offline, and backs
+off after failures. Browsers may throttle background tabs. Both interfaces offer
+opt-in browser notifications with generic text; a page must remain open. This
+does not implement Web Push for a closed browser. Unread indicators, preserved
+drafts and reading position, and stable client message IDs prevent polling or
+double-clicks from creating duplicate messages.
+
+Widget title, greeting, accent color and position belong in the generated
+snippet. Workspace identity and conversation access belong on the server. The
+opaque visitor token grants access to its stored conversation; it does not carry
+editable identity claims. The server records the allowed request origin and an
+optional matching page path at creation, excluding query strings and fragments.
+The inbox labels this as browser-reported context, not verified visitor identity.
+Older conversations may have no recorded source.
+New Telegram topics include the configured site and a shortened, explicitly
+reported page path. Existing topics keep their previous names.
+
+For public deployments, configure both `TURNSTILE_SITE_KEY` and
+`TURNSTILE_SECRET_KEY`, and allow the embedding hosts in the Turnstile dashboard.
+The server validates the proof, hostname and `start_chat` action before creating
+a chat. Existing authenticated conversations do not need another challenge.
+Keep the secret server-side. Local development can leave both keys unset.
+
+Operators can block or unblock a conversation. Blocking stops new visitor
+messages and holds queued delivery until unblocked; it is not a person-level
+ban. Visitors and operators can delete a conversation, invalidating its token
+and removing its Threadpost records. Copies already delivered to a messaging
+provider remain there. Failed or ambiguous external sends are not automatically
+retried.
+
+Existing D1 installations created before these messaging features must apply
+`cloudflare/migrations/0002-messaging.sql` before deploying the updated server:
+
+```sh
+bunx wrangler d1 execute DB --remote --config path/to/wrangler.jsonc --file cloudflare/migrations/0002-messaging.sql
+```
+
+Fresh databases use the current schema and must not run this column-addition
+migration again. Local SQLite databases migrate automatically. Choose unique
+rate-limit namespace IDs for your account when copying the Worker example.
 
 Every permitted operator's plain-text topic message is a public reply to the
 visitor. Slash commands, including `/note`, are ignored. Keep the forum private

@@ -1,9 +1,10 @@
 import type { Config } from "./config";
 
 /** A connector owns provider transport; it does not own visitor authentication. */
+export interface ConversationContext { sourcePath?: string | null }
 export interface Connector {
   kind: string;
-  createThread(conversationId: string): Promise<string>;
+  createThread(conversationId: string, context?: ConversationContext): Promise<string>;
   send(threadId: string, body: string): Promise<void>;
 }
 
@@ -43,9 +44,17 @@ export class TelegramConnector implements Connector {
       throw new DeliveryError(true);
     }
   }
-  async createThread(id: string): Promise<string> {
+  async createThread(id: string, context?: ConversationContext): Promise<string> {
+    const clean = (value: string) => value
+      .replace(/[\u0000-\u001f\u007f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, " ")
+      .replace(/\s+/g, " ").trim();
+    const clip = (value: string, length: number) => Array.from(value).slice(0, length).join("");
+    const site = clip(clean(this.config.siteName) || this.config.siteId, 40);
+    const reportedPath = context?.sourcePath ? clip(clean(context.sourcePath), 48) : "";
+    const fullName = `${site} · Visitor ${id.slice(0, 8)}${reportedPath ? ` · Reported page ${reportedPath}` : ""}`;
+    const name = Array.from(fullName).slice(0, 128).join("");
     const result = await this.call("createForumTopic", {
-      chat_id: this.config.telegramChatId, name: `Visitor ${id.slice(0, 8)}`,
+      chat_id: this.config.telegramChatId, name,
     });
     if (!Number.isSafeInteger(result?.message_thread_id)) throw new DeliveryError(true);
     return String(result.message_thread_id);
