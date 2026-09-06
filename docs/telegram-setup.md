@@ -150,3 +150,12 @@ Connecting Telegram preserves conversations already stored in Threadpost, but it
 Slash commands, messages from unlisted accounts, messages in the wrong group, and bot-authored messages are ignored. An operator reply sent from Threadpost’s browser inbox appears in the visitor widget but is not echoed into Telegram.
 
 Keep the forum private. Telegram bot chats are not end-to-end encrypted, and deleting a conversation from Threadpost does not remove messages already delivered to Telegram.
+
+## Deleted chats and separate conversations
+
+Deleting a chat removes its messages from both the website and Threadpost admin
+inbox. It does not delete the copies in Telegram. Replies to that old Telegram
+topic cannot reach a visitor after its Threadpost conversation is deleted.
+Starting again creates a new conversation ID and a new Telegram topic; the old
+messages are not moved into it. Use **Close** in the admin inbox when you want to
+keep the conversation history instead of permanently deleting it.

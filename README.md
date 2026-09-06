@@ -80,7 +80,13 @@ Open `http://localhost:8788` for the demo page or `http://localhost:8788/admin` 
 
 ```sh
 bun run check
+bun run check:messaging
 ```
+
+The messaging check runs five browser scenarios with an isolated D1 adapter and
+a simulated Telegram network; it never uses deployment credentials or sends real
+Telegram messages. Install Chromium with `bun run browser:install` first, or set
+`CHROMIUM_PATH` to an existing installation.
 
 The application uses Bun's native SQLite driver. By default, durable state is stored in `data/threadpost.sqlite`.
 

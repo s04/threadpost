@@ -24,6 +24,7 @@
     "typecheck": "tsc --noEmit && tsc --project cloudflare/tsconfig.json",
     "check": "bun run typecheck && bun test && bun run build",
     "check:browser": "bun run build && bun scripts/browser-smoke.ts",
+    "check:messaging": "bun run build && bun scripts/messaging-e2e.ts",
     "browser:install": "playwright-core install chromium"
   },
   "devDependencies": {

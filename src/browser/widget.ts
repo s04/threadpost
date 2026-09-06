@@ -812,7 +812,7 @@
   }
 
   async function deleteConversation(): Promise<void> {
-    if (!session || pending?.sending || !window.confirm("Delete this conversation and its messages?")) return;
+    if (!session || pending?.sending || !window.confirm("Permanently delete this conversation and its history from the website and admin inbox? Telegram copies remain, but replies to that old topic will no longer reach this website. A new chat starts a separate conversation.")) return;
     const requestedSession = session;
     deleteButton.disabled = true;
     clearError();

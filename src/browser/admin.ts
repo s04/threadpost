@@ -310,7 +310,7 @@ async function selectConversation(id: string, moveFocus = true, quiet = false): 
     state.conversation = result;
     markRead(id, result.messages); renderList();
     if (changedConversation) $<HTMLTextAreaElement>("reply").value = drafts.get(id) || "";
-    if (!unchanged) renderThread(quiet);
+    if (!quiet || !unchanged) renderThread(quiet);
     if (moveFocus) $("thread-name").focus?.();
   } catch (error) {
     if (requestId !== state.threadRequest) return;
@@ -367,10 +367,15 @@ async function submitReply(event: SubmitEvent) {
     if (!attempt || attempt.body !== body) { attempt = { id: crypto.randomUUID(), body }; replyAttempts.set(conversationId, attempt); }
     await api<Message>(`/api/admin/conversations/${encodeURIComponent(conversationId)}/messages`, { method: "POST", body: JSON.stringify({ body, clientMessageId: attempt.id }) });
     replyAttempts.delete(conversationId); drafts.delete(conversationId);
-    if (state.selectedId === conversationId) input.value = "";
-    show($("reply-status"), "Sent"); await selectConversation(conversationId, false);
+    if (state.selectedId === conversationId) {
+      input.value = "";
+      show($("reply-status"), "Sent");
+      await selectConversation(conversationId, false);
+    }
     const result = await api<{ conversations: ConversationSummary[] }>("/api/admin/conversations"); state.conversations = result.conversations || []; renderList();
-  } catch (error) { handleError(error, $("reply-status")); }
+  } catch (error) {
+    if (state.selectedId === conversationId) handleError(error, $("reply-status"));
+  }
   finally {
     sending.delete(conversationId);
     if (state.selectedId === conversationId) { button.disabled = false; input.disabled = false; }
@@ -418,7 +423,9 @@ function confirmDelete() {
   confirmDialog("Delete conversation?", "This permanently deletes the local conversation and messages. Copies already sent to Telegram are not deleted.", "Delete", async () => {
     try {
       await api<{ ok: true }>(`/api/admin/conversations/${encodeURIComponent(conversationId)}`, { method: "DELETE" });
-      drafts.delete(conversationId); replyAttempts.delete(conversationId); resetThread(); await refresh();
+      drafts.delete(conversationId); replyAttempts.delete(conversationId);
+      if (state.selectedId === conversationId) resetThread();
+      await refresh();
     } catch (error) { handleError(error, $("thread-error")); }
   });
 }
