@@ -2,7 +2,8 @@
 
 ## Reporting a vulnerability
 
-Please use the repository host's private vulnerability reporting feature. Do not open a public issue for an undisclosed vulnerability.
+Please [report a vulnerability privately](https://github.com/s04/threadpost/security/advisories/new).
+Do not open a public issue for an undisclosed vulnerability.
 
 Include the affected version, reproduction steps, impact, and any suggested mitigation. Remove access tokens, message contents, database files, and other private data from the report. Maintainers will acknowledge the report, investigate it, and coordinate disclosure and a fix when appropriate.
 

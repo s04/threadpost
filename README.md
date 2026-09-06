@@ -11,6 +11,10 @@ Threadpost is a small, self-hosted inbox for conversations started from a websit
 
 Threadpost is an open-source starter for one workspace and one running process. It is not a hosted multi-tenant service.
 
+**Public alpha:** see the [readiness review and next priorities](docs/release-readiness.md)
+and [security review](docs/security-review.md) for what is included, what was
+tested, and the remaining limitations.
+
 - **One script to embed.** Customize the title, greeting, color, and position.
 - **Reply where you are.** Use the browser inbox or a private Telegram forum, with one topic per conversation.
 - **Messaging basics included.** Automatic updates, unread indicators, opt-in browser notifications, blocking, and deletion.
